@@ -19,6 +19,17 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
+/** In-app update flow states (see update/UpdateManager). */
+sealed interface UpdateUiState {
+    data object Idle : UpdateUiState
+    data object Checking : UpdateUiState
+    data object UpToDate : UpdateUiState
+    data class Available(val manifest: com.example.update.UpdateManager.Manifest) : UpdateUiState
+    data class Downloading(val manifest: com.example.update.UpdateManager.Manifest, val progress: Float) : UpdateUiState
+    data class Ready(val manifest: com.example.update.UpdateManager.Manifest, val file: java.io.File) : UpdateUiState
+    data class Failed(val manifest: com.example.update.UpdateManager.Manifest?, val message: String) : UpdateUiState
+}
+
 /** One undoable tracker change: the full day record before the change. */
 data class UndoEvent(val id: Long, val message: String, val before: DayRecord)
 
@@ -484,6 +495,82 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 onResult(false, 0, res.exceptionOrNull()?.message)
             }
         }
+    }
+
+    // ----------------- IN-APP UPDATES -----------------
+
+    private val _updateState = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+    val updateState: StateFlow<UpdateUiState> = _updateState.asStateFlow()
+    /** Whether the update sheet is on screen. */
+    val updateSheetVisible = MutableStateFlow(false)
+    val selfUpdateEnabled: Boolean get() = com.example.update.UpdateManager.isEnabled
+
+    /**
+     * Checks GitHub for a newer version. Automatic checks (on launch, max every 12 h) stay silent unless an
+     * update exists that the user hasn't skipped; manual checks always open the sheet with the result.
+     */
+    fun checkForUpdates(manual: Boolean) {
+        val app = getApplication<Application>()
+        if (!com.example.update.UpdateManager.isEnabled) return
+        if (!manual && !com.example.update.UpdateManager.shouldAutoCheck(app)) return
+        if (_updateState.value is UpdateUiState.Downloading) { updateSheetVisible.value = true; return }
+        viewModelScope.launch {
+            if (manual) {
+                _updateState.value = UpdateUiState.Checking
+                updateSheetVisible.value = true
+            }
+            com.example.update.UpdateManager.check(app)
+                .onSuccess { m ->
+                    if (m == null) {
+                        _updateState.value = UpdateUiState.UpToDate
+                    } else {
+                        _updateState.value = UpdateUiState.Available(m)
+                        val mandatory = m.isMandatoryFor(com.example.update.UpdateManager.currentVersionCode)
+                        if (manual || mandatory || !com.example.update.UpdateManager.isSkipped(app, m.versionCode)) updateSheetVisible.value = true
+                    }
+                }
+                .onFailure { e ->
+                    _updateState.value = UpdateUiState.Failed(null, friendlyNetError(e))
+                    if (!manual) { _updateState.value = UpdateUiState.Idle }
+                }
+        }
+    }
+
+    fun startUpdateDownload() {
+        val m = when (val st = _updateState.value) {
+            is UpdateUiState.Available -> st.manifest
+            is UpdateUiState.Failed -> st.manifest ?: return
+            else -> return
+        }
+        val app = getApplication<Application>()
+        _updateState.value = UpdateUiState.Downloading(m, 0f)
+        viewModelScope.launch {
+            com.example.update.UpdateManager.download(app, m) { p -> _updateState.value = UpdateUiState.Downloading(m, p) }
+                .onSuccess { f -> _updateState.value = UpdateUiState.Ready(m, f) }
+                .onFailure { e -> _updateState.value = UpdateUiState.Failed(m, e.message ?: "Update failed") }
+        }
+    }
+
+    fun installUpdate() {
+        val st = _updateState.value as? UpdateUiState.Ready ?: return
+        com.example.update.UpdateManager.install(getApplication(), st.file)
+    }
+
+    /** "Later": hide the sheet and don't auto-prompt again for this version (mandatory updates excepted). */
+    fun dismissUpdate() {
+        val st = _updateState.value
+        val m = (st as? UpdateUiState.Available)?.manifest
+        if (m != null && !m.isMandatoryFor(com.example.update.UpdateManager.currentVersionCode)) {
+            com.example.update.UpdateManager.skip(getApplication(), m.versionCode)
+        }
+        updateSheetVisible.value = false
+        if (st is UpdateUiState.UpToDate || st is UpdateUiState.Failed && st.manifest == null) _updateState.value = UpdateUiState.Idle
+    }
+
+    private fun friendlyNetError(e: Throwable): String = when (e) {
+        is java.net.UnknownHostException, is java.net.SocketTimeoutException, is java.net.ConnectException ->
+            if (isBn()) "ইন্টারনেট সংযোগ নেই। পরে আবার চেষ্টা করুন।" else "No internet connection. Please try again later."
+        else -> e.message ?: "Could not check for updates"
     }
 
     // ----------------- STREAKS -----------------

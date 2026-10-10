@@ -29,3 +29,6 @@ firestore.indexes.json
 keystore.properties
 *.jks
 *.keystore
+
+# Release outputs (APK + mapping) - uploaded to GitHub Releases, not committed
+dist/

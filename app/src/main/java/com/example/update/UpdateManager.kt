@@ -1,0 +1,214 @@
+package com.example.update
+
+import android.app.DownloadManager
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.util.Log
+import androidx.core.content.FileProvider
+import com.example.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
+
+/**
+ * Self-hosted updates (GitHub). The app reads [BuildConfig.UPDATE_MANIFEST_URL]
+ * (update/version.json in the repo), and when a newer versionCode is published it downloads the APK
+ * from GitHub Releases and hands it to Android's installer. The user always confirms the install.
+ *
+ * Safety checks before installing: https-only allow-listed hosts, SHA-256 must match the manifest,
+ * the APK must be this app's package, be newer, and be signed with the SAME key as the installed app.
+ * Disabled for Play builds (BuildConfig.SELF_UPDATE = false), because Play forbids self-updating apps.
+ */
+object UpdateManager {
+    private const val TAG = "UpdateManager"
+    private const val PREFS = "addin_update_prefs"
+    private const val CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000L
+
+    private val ALLOWED_HOSTS = setOf(
+        "github.com", "raw.githubusercontent.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"
+    )
+
+    data class Manifest(
+        val versionCode: Int,
+        val versionName: String,
+        val apkUrl: String,
+        val sha256: String,
+        val notesEn: String,
+        val notesBn: String,
+        val minSupportedVersionCode: Int
+    ) {
+        /** True when the installed version is too old to keep using (forced update). */
+        fun isMandatoryFor(current: Int) = current < minSupportedVersionCode
+    }
+
+    val isEnabled: Boolean get() = BuildConfig.SELF_UPDATE && BuildConfig.UPDATE_MANIFEST_URL.isNotBlank()
+    val currentVersionCode: Int get() = BuildConfig.VERSION_CODE
+    val currentVersionName: String get() = BuildConfig.VERSION_NAME
+
+    private fun prefs(c: Context) = c.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** Auto-checks at most every 12 h; manual checks always run. */
+    fun shouldAutoCheck(context: Context): Boolean =
+        isEnabled && System.currentTimeMillis() - prefs(context).getLong("last_check", 0L) > CHECK_INTERVAL_MS
+
+    fun isSkipped(context: Context, versionCode: Int) = prefs(context).getInt("skipped_version", -1) == versionCode
+    fun skip(context: Context, versionCode: Int) = prefs(context).edit().putInt("skipped_version", versionCode).apply()
+
+    internal fun isAllowedUrl(url: String): Boolean = runCatching {
+        val u = Uri.parse(url)
+        u.scheme == "https" && (u.host ?: "") in ALLOWED_HOSTS
+    }.getOrDefault(false)
+
+    /** Parses and validates version.json. Returns null for malformed or unsafe manifests. */
+    internal fun parseManifest(json: String): Manifest? = runCatching {
+        val o = JSONObject(json)
+        val m = Manifest(
+            versionCode = o.getInt("versionCode"),
+            versionName = o.getString("versionName"),
+            apkUrl = o.getString("apkUrl"),
+            sha256 = o.getString("sha256").lowercase().trim(),
+            notesEn = o.optString("notes", ""),
+            notesBn = o.optString("notesBn", o.optString("notes", "")),
+            minSupportedVersionCode = o.optInt("minSupportedVersionCode", 0)
+        )
+        require(isAllowedUrl(m.apkUrl)) { "APK URL not allowed" }
+        require(Regex("^[0-9a-f]{64}$").matches(m.sha256)) { "Invalid sha256" }
+        m
+    }.onFailure { Log.w(TAG, "Bad manifest: ${it.message}") }.getOrNull()
+
+    /** Fetches the manifest. Returns it only if it is newer than the installed version. */
+    suspend fun check(context: Context): Result<Manifest?> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (!isEnabled) return@runCatching null
+            val conn = (URL(BuildConfig.UPDATE_MANIFEST_URL).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 10_000
+                readTimeout = 10_000
+                setRequestProperty("Cache-Control", "no-cache")
+                useCaches = false
+            }
+            val body = try {
+                if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
+                conn.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                conn.disconnect()
+            }
+            prefs(context).edit().putLong("last_check", System.currentTimeMillis()).apply()
+            val m = parseManifest(body) ?: throw IllegalStateException("Update information is invalid")
+            if (m.versionCode > currentVersionCode) m else null
+        }
+    }
+
+    private fun apkFile(context: Context, m: Manifest): File {
+        val dir = File(context.getExternalFilesDir(null) ?: context.filesDir, "updates").apply { mkdirs() }
+        // Remove older downloads so they don't pile up.
+        dir.listFiles()?.forEach { if (it.name != "Ad-Deen-${m.versionCode}.apk") it.delete() }
+        return File(dir, "Ad-Deen-${m.versionCode}.apk")
+    }
+
+    /**
+     * Downloads with DownloadManager (survives app switches, shows a system notification),
+     * reporting progress 0..1, then verifies the file. Returns the verified APK.
+     */
+    suspend fun download(context: Context, m: Manifest, onProgress: (Float) -> Unit): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
+            val file = apkFile(context, m)
+            if (file.exists() && verify(context, file, m).isSuccess) return@runCatching file
+            file.delete()
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val id = dm.enqueue(
+                DownloadManager.Request(Uri.parse(m.apkUrl))
+                    .setTitle("Ad-Deen ${m.versionName}")
+                    .setDescription("Downloading update")
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+                    .setDestinationUri(Uri.fromFile(file))
+            )
+            while (true) {
+                delay(400)
+                dm.query(DownloadManager.Query().setFilterById(id))?.use { c ->
+                    if (!c.moveToFirst()) throw IllegalStateException("Download cancelled")
+                    val status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                    val done = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                    val total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                    if (total > 0) onProgress((done.toFloat() / total).coerceIn(0f, 1f))
+                    when (status) {
+                        DownloadManager.STATUS_SUCCESSFUL -> {
+                            verify(context, file, m).getOrThrow()
+                            return@runCatching file
+                        }
+                        DownloadManager.STATUS_FAILED -> throw IllegalStateException("Download failed (check your connection)")
+                    }
+                } ?: throw IllegalStateException("Download unavailable")
+            }
+            @Suppress("UNREACHABLE_CODE") file
+        }
+    }
+
+    /** SHA-256 + package + newer version + same signing certificate as the installed app. */
+    fun verify(context: Context, file: File, m: Manifest): Result<Unit> = runCatching {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buf)
+                if (n <= 0) break
+                digest.update(buf, 0, n)
+            }
+        }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        if (actual != m.sha256) {
+            file.delete()
+            throw SecurityException("Downloaded file is corrupted or tampered (checksum mismatch)")
+        }
+        val pm = context.packageManager
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) PackageManager.GET_SIGNING_CERTIFICATES else @Suppress("DEPRECATION") PackageManager.GET_SIGNATURES
+        val archive = pm.getPackageArchiveInfo(file.absolutePath, flags) ?: throw SecurityException("Not a valid APK")
+        if (archive.packageName != context.packageName) throw SecurityException("APK is for a different app")
+        val archiveCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) archive.longVersionCode else @Suppress("DEPRECATION") archive.versionCode.toLong()
+        if (archiveCode <= currentVersionCode) throw SecurityException("APK is not newer than the installed version")
+        val installed = pm.getPackageInfo(context.packageName, flags)
+        if (signatures(archive) != signatures(installed)) throw SecurityException("APK is not signed by the Ad-Deen developer")
+    }
+
+    private fun signatures(info: PackageInfo): Set<String> {
+        val sigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.signingInfo?.let { if (it.hasMultipleSigners()) it.apkContentsSigners else it.signingCertificateHistory }
+        } else {
+            @Suppress("DEPRECATION") info.signatures
+        } ?: emptyArray()
+        val md = MessageDigest.getInstance("SHA-256")
+        return sigs.map { s -> md.digest(s.toByteArray()).joinToString("") { "%02x".format(it) } }.toSet()
+    }
+
+    /** Android 8+: the user must allow "Install unknown apps" for Ad-Deen once. */
+    fun canInstall(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
+
+    fun openInstallPermissionSettings(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startActivity(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
+
+    /** Opens Android's installer for the verified APK. */
+    fun install(context: Context, file: File) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+}

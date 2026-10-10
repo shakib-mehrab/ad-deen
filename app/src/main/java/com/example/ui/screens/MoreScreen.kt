@@ -237,6 +237,15 @@ fun MoreScreen(
                             onClick = { subScreen = "quran" },
                             modifier = Modifier.testTag("quran_tile")
                         )
+                        if (viewModel.selfUpdateEnabled) {
+                            com.example.ui.components.SettingValueRow(
+                                title = if (lang == "bn") "আপডেট খুঁজুন" else "Check for updates",
+                                value = "v${com.example.update.UpdateManager.currentVersionName}",
+                                icon = Icons.Outlined.SystemUpdate,
+                                onClick = { viewModel.checkForUpdates(manual = true) },
+                                modifier = Modifier.testTag("check_updates_tile")
+                            )
+                        }
                         com.example.ui.components.SettingValueRow(
                             title = Strings.t("battery_optimization", lang),
                             value = null,

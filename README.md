@@ -64,6 +64,9 @@ a daily amal tracker, azkhar and tasbih, in English and বাংলা.**
 - Each user can only read and write their own data (`users/{uid}/…` security rules).
 - **Backup files:** share to Google Drive, save to storage, restore any time.
 
+### Updates
+- **In-app updates:** new versions published on GitHub Releases are offered inside the app (More → Check for updates, or automatically). Each download is verified (checksum and signing key) before Android's installer opens.
+
 ### Design
 - A soft, warm interface: paper and amber by day, **warm espresso night mode** that fades in automatically at Maghrib (or follows the phone's dark mode).
 - Hero clock over a pale mosque skyline, with the sun or moon moving on its real path across the sky.
@@ -131,14 +134,15 @@ scripts/                       icon generator, live-reload dev script
 
 - **Live reload while developing (VS Code):** run the task *Ad-Deen: Live Watch*. It rebuilds and reinstalls on every save (`scripts/dev-watch.ps1`).
 - **Run the tests:** `.\gradlew.bat testDebugUnitTest`
-- **Build a release APK:** see [docs/RELEASE.md](docs/RELEASE.md).
+- **Build a release:** `pwsh -File scripts/release.ps1 -Notes "..."` (see [docs/RELEASE.md](docs/RELEASE.md)).
+- **Download the app:** [latest release](https://github.com/shakib-mehrab/ad-deen/releases/latest).
 
 ## Documentation
 
 | Doc | What it covers |
 | :--- | :--- |
 | [docs/RELEASE.md](docs/RELEASE.md) | Signing, building the APK/AAB, sharing it, and the Play Store checklist |
-| [docs/UPDATES.md](docs/UPDATES.md) | How to ship updates: self-hosted APK, Remote Config, Play |
+| [docs/UPDATES.md](docs/UPDATES.md) | Shipping updates: the in-app GitHub updater, the release script, Remote Config, Play |
 | [docs/SOUNDS.md](docs/SOUNDS.md) | Waqt → channel → sound mapping, and how to replace sounds |
 | [docs/LOGO.md](docs/LOGO.md) | Master logo, regenerating every icon |
 | [docs/FONTS.md](docs/FONTS.md) | Bundled fonts and their licences |

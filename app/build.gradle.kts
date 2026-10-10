@@ -11,6 +11,11 @@ val hasReleaseKeystore = keystoreProps.getProperty("storeFile") != null
 // Local-only escape hatch to test a minified build on a phone that has the debug build installed:
 //   gradlew assembleRelease -PallowDebugSigning=true   (NEVER distribute that APK)
 val allowDebugSigning = (findProperty("allowDebugSigning") as String?)?.toBoolean() == true
+// Distribution channel. "github" (default) = APK with the in-app updater.
+// "play" = for Google Play: updater off and REQUEST_INSTALL_PACKAGES removed (Play policy).
+//   gradlew bundleRelease -Pdistribution=play
+val distribution = (findProperty("distribution") as String?) ?: "github"
+val selfUpdate = distribution == "github"
 
 plugins {
   alias(libs.plugins.android.application)
@@ -33,6 +38,15 @@ android {
     versionName = "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // In-app updates: the app reads this file to learn about new versions (see docs/UPDATES.md).
+    buildConfigField("String", "UPDATE_MANIFEST_URL", "\"https://raw.githubusercontent.com/shakib-mehrab/ad-deen/main/update/version.json\"")
+    buildConfigField("boolean", "SELF_UPDATE", selfUpdate.toString())
+  }
+
+  // Play builds strip the install-packages permission via an overlay manifest.
+  if (!selfUpdate) {
+    sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
   }
 
   signingConfigs {

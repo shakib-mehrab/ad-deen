@@ -99,6 +99,8 @@ fun AdDinApp(viewModel: MainViewModel = viewModel()) {
     // (First-run permission requests now happen in onboarding, with an explanation.)
     LaunchedEffect(onboardingDone) {
         if (!onboardingDone) return@LaunchedEffect
+        // In-app update check (GitHub), at most every 12 h; silent unless a new version exists.
+        viewModel.checkForUpdates(manual = false)
         com.example.alarm.SoundHelper.ensureCustomSoundFolders(context)
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -119,6 +121,18 @@ fun AdDinApp(viewModel: MainViewModel = viewModel()) {
             }
             if (result == SnackbarResult.ActionPerformed) viewModel.undo(event)
         }
+    }
+
+    val updateState by viewModel.updateState.collectAsState()
+    val updateSheetVisible by viewModel.updateSheetVisible.collectAsState()
+    if (updateSheetVisible && onboardingDone && !showLoadingScreen) {
+        com.example.ui.components.UpdateSheet(
+            state = updateState,
+            lang = lang,
+            onDismiss = { viewModel.dismissUpdate() },
+            onDownload = { viewModel.startUpdateDownload() },
+            onInstall = { viewModel.installUpdate() }
+        )
     }
 
     val stage = when {
