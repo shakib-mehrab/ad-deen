@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -50,14 +51,15 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoreScreen(
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    initialSubScreen: String? = null
 ) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
     val currentUser by viewModel.currentUserAccount.collectAsState()
     val lang = settings.language
 
-    var subScreen by remember { mutableStateOf<String?>(null) } // null, "reminders", "quran", "settings", "auth", "backup"
+    var subScreen by remember { mutableStateOf(initialSubScreen) } // null, "reminders", "quran", "settings", "auth", "backup"
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showBatteryRationaleDialog by remember { mutableStateOf(false) }
@@ -132,216 +134,136 @@ fun MoreScreen(
             )
         }
         else -> {
-            // Main More Hub
+            // Main More hub: grouped settings rows (notification-sheet reference)
+            val iv = { c: com.example.model.IstigfarDurudConfig ->
+                if (!c.enabled) (if (lang == "bn") "বন্ধ" else "Off")
+                else "${com.example.alarm.AlarmScheduler.intervalMinutes(c)} ${if (lang == "bn") "মিনিট পর পর" else "min interval"}"
+            }
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(horizontal = 16.dp),
-                contentPadding = PaddingValues(vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                item {
-                    Text(
-                        text = Strings.t("nav_more", lang),
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 20.sp
-                        ),
-                        color = com.example.ui.theme.AppColors.Secondary
-                    )
-                }
+                item { com.example.ui.components.ScreenTitle(Strings.t("nav_more", lang)) }
 
-                // Account card preview: white surface + 1dp #874D14@30% border
                 item {
                     val effectiveUserName = currentUser?.effectiveName ?: ""
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { subScreen = "auth" }
-                            .testTag("account_card"),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-                        border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                    com.example.ui.components.GlowCard(
+                        modifier = Modifier.fillMaxWidth().testTag("account_card"),
+                        onClick = { subScreen = "auth" }
                     ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .background(
-                                        if (currentUser != null) com.example.ui.theme.AppColors.Primary else com.example.ui.theme.AppColors.WarmTintContainer,
-                                        CircleShape
-                                    )
-                                    .border(1.dp, com.example.ui.theme.AppColors.BorderSubtle, CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (currentUser != null) {
-                                    Text(
-                                        text = effectiveUserName.trim().take(1).uppercase(),
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = com.example.ui.theme.AppColors.OnPrimary
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Outlined.PersonOutline,
-                                        contentDescription = null,
-                                        tint = com.example.ui.theme.AppColors.Secondary
-                                    )
-                                }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (currentUser != null) {
+                                com.example.ui.components.UserAvatar(effectiveUserName, size = 48.dp)
+                            } else {
+                                com.example.ui.components.AdDeenLogo(size = 48.dp)
                             }
-                            Column(modifier = Modifier.weight(1f)) {
-                                if (currentUser != null) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = effectiveUserName,
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = com.example.ui.theme.AppColors.TextPrimary,
-                                            modifier = Modifier.testTag("authenticated_user_name_tile")
-                                        )
-                                    }
-                                    Text(
-                                        text = "${currentUser?.email} • ${if (currentUser?.isCloudConnected == true) (if (lang == "bn") "ক্লাউড কানেক্টেড" else "Cloud Connected") else Strings.t("guest_mode", lang)}",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                        color = com.example.ui.theme.AppColors.TextSecondary
-                                    )
-                                } else {
-                                    Text(
-                                        text = Strings.t("guest_mode", lang),
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = com.example.ui.theme.AppColors.TextPrimary
-                                    )
-                                    Text(
-                                        text = if (lang == "bn") "ব্যাকআপ ও সিঙ্ক করতে সাইন ইন করুন" else "Sign in to backup & sync across devices",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                        color = com.example.ui.theme.AppColors.TextSecondary
-                                    )
-                                }
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = if (currentUser != null) effectiveUserName else Strings.t("guest_mode", lang),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = com.example.ui.theme.AppColors.TextPrimary,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.testTag("authenticated_user_name_tile")
+                                )
+                                Text(
+                                    text = currentUser?.email ?: (if (lang == "bn") "ব্যাকআপ ও সিঙ্ক করতে সাইন ইন করুন" else "Sign in to back up & sync across devices"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = com.example.ui.theme.AppColors.TextSecondary,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
                             }
-                            Icon(
-                                imageVector = Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = com.example.ui.theme.AppColors.Secondary,
-                                modifier = Modifier.size(20.dp)
-                            )
+                            Icon(Icons.Default.ChevronRight, null, tint = com.example.ui.theme.AppColors.TextSecondary)
                         }
                     }
                 }
 
-                // Backup & Sync Tile
                 item {
-                    MoreNavCard(
-                        icon = Icons.Outlined.CloudSync,
-                        title = Strings.t("cloud_sync", lang),
-                        subtitle = if (lang == "bn") "আমল সিঙ্ক ও ব্যাকআপ ফাইল তৈরি" else "Sync prayer history & backup to file",
-                        onClick = { subScreen = "backup" },
-                        testTag = "cloud_sync_tile"
-                    )
-                }
-
-                // Istigfar Reminders Tile
-                item {
-                    MoreNavCard(
-                        icon = Icons.Outlined.Timer,
-                        title = Strings.t("istigfar_reminders", lang),
-                        subtitle = if (lang == "bn") "ইস্তিগফারের স্বয়ংক্রিয় নোটিফিকেশন, বিরতি ও শিডিউল" else "Automatic Istigfar notification intervals & quiet hours",
-                        onClick = { subScreen = "istigfar_reminders" },
-                        testTag = "istigfar_reminders_tile"
-                    )
-                }
-
-                // Darud Reminders Tile
-                item {
-                    MoreNavCard(
-                        icon = Icons.Outlined.FavoriteBorder,
-                        title = Strings.t("durud_reminders", lang),
-                        subtitle = if (lang == "bn") "দরূদ শরীফের স্বয়ংক্রিয় নোটিফিকেশন, বিরতি ও শিডিউল" else "Automatic Darud notification intervals & quiet hours",
-                        onClick = { subScreen = "durud_reminders" },
-                        testTag = "durud_reminders_tile"
-                    )
-                }
-
-                // Custom Sounds & Settings Tile
-                item {
-                    MoreNavCard(
-                        icon = Icons.Outlined.GraphicEq,
-                        title = if (lang == "bn") "কাস্টম সাউন্ড ও সেটিংস" else "Custom Sounds & Font",
-                        subtitle = if (lang == "bn") "নোটিফিকেশন অডিও ও আরবি ফন্ট সাইজ" else "Manage audio tones & Arabic font size",
-                        onClick = { subScreen = "custom_sounds" },
-                        testTag = "custom_sounds_tile"
-                    )
-                }
-
-                // Quran Browser Tile
-                item {
-                    MoreNavCard(
-                        icon = Icons.Outlined.MenuBook,
-                        title = Strings.t("quran_browser", lang),
-                        subtitle = "quran.com • quran.gov.bd • quraanshareef.org",
-                        onClick = { subScreen = "quran" },
-                        testTag = "quran_tile"
-                    )
-                }
-
-                // Settings Tile
-                item {
-                    MoreNavCard(
-                        icon = Icons.Outlined.Settings,
-                        title = Strings.t("settings", lang),
-                        subtitle = if (lang == "bn") "ভাষা, হিসাব পদ্ধতি, জিপিএস ও ৬৪ জেলা" else "Language, prayer math, GPS & 64 Districts",
-                        onClick = { subScreen = "settings" },
-                        testTag = "settings_tile"
-                    )
-                }
-
-                // Battery Optimization Tile
-                item {
-                    MoreNavCard(
-                        icon = Icons.Outlined.BatteryChargingFull,
-                        title = Strings.t("battery_optimization", lang),
-                        subtitle = Strings.t("battery_opt_desc", lang),
-                        onClick = { showBatteryRationaleDialog = true },
-                        testTag = "battery_opt_tile"
-                    )
-                }
-
-                // Delete Account Option (If signed in)
-                if (currentUser != null) {
-                    item {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { showDeleteConfirmDialog = true }
-                                .testTag("delete_account_tile"),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f))
+                    com.example.ui.components.SettingsGroup(title = if (lang == "bn") "স্মরণিকা" else "Reminders") {
+                        com.example.ui.components.SettingRow(
+                            title = Strings.t("istigfar_reminders", lang),
+                            subtitle = iv(settings.istigfar),
+                            icon = Icons.Outlined.Timer,
+                            onClick = { subScreen = "istigfar_reminders" },
+                            modifier = Modifier.testTag("istigfar_reminders_tile")
                         ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = Strings.t("delete_account", lang),
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = if (lang == "bn") "ক্লাউডের সমস্ত ডাটা স্থায়ীভাবে মুছে ফেলুন" else "Permanently wipe cloud records & account",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-                                }
-                            }
+                            com.example.ui.components.SoftSwitch(settings.istigfar.enabled, { viewModel.updateIstigfarConfig(settings.istigfar.copy(enabled = it)) })
+                        }
+                        com.example.ui.components.SettingRow(
+                            title = Strings.t("durud_reminders", lang),
+                            subtitle = iv(settings.durud),
+                            icon = Icons.Outlined.FavoriteBorder,
+                            onClick = { subScreen = "durud_reminders" },
+                            modifier = Modifier.testTag("durud_reminders_tile")
+                        ) {
+                            com.example.ui.components.SoftSwitch(settings.durud.enabled, { viewModel.updateDurudConfig(settings.durud.copy(enabled = it)) })
+                        }
+                        com.example.ui.components.SettingSwitchRow(
+                            title = if (lang == "bn") "সকাল-সন্ধ্যার আযকার স্মরণিকা" else "Morning & evening azkhar",
+                            checked = settings.morningReminder && settings.eveningReminder,
+                            onCheckedChange = { viewModel.updateReminders(it, it) },
+                            icon = Icons.Outlined.WbSunny
+                        )
+                        com.example.ui.components.SettingValueRow(
+                            title = if (lang == "bn") "কাস্টম সাউন্ড" else "Custom sounds",
+                            value = null,
+                            icon = Icons.Outlined.GraphicEq,
+                            onClick = { subScreen = "custom_sounds" },
+                            modifier = Modifier.testTag("custom_sounds_tile")
+                        )
+                    }
+                }
+
+                item {
+                    com.example.ui.components.SettingsGroup(title = if (lang == "bn") "অ্যাপ" else "App") {
+                        com.example.ui.components.SettingValueRow(
+                            title = Strings.t("settings", lang),
+                            value = if (lang == "bn") "বাংলা" else "English",
+                            subtitle = if (lang == "bn") "ভাষা, হিসাব পদ্ধতি, অবস্থান" else "Language, calculation method, location",
+                            icon = Icons.Outlined.Settings,
+                            onClick = { subScreen = "settings" },
+                            modifier = Modifier.testTag("settings_tile")
+                        )
+                        com.example.ui.components.SettingValueRow(
+                            title = Strings.t("quran_browser", lang),
+                            value = null,
+                            icon = Icons.Outlined.MenuBook,
+                            onClick = { subScreen = "quran" },
+                            modifier = Modifier.testTag("quran_tile")
+                        )
+                        com.example.ui.components.SettingValueRow(
+                            title = Strings.t("battery_optimization", lang),
+                            value = null,
+                            subtitle = if (lang == "bn") "অ্যালার্ম যেন সময়মতো বাজে" else "Keep alarms on time in the background",
+                            icon = Icons.Outlined.BatteryChargingFull,
+                            onClick = { showBatteryRationaleDialog = true },
+                            modifier = Modifier.testTag("battery_opt_tile")
+                        )
+                    }
+                }
+
+                item {
+                    com.example.ui.components.SettingsGroup(title = if (lang == "bn") "ডাটা" else "Data") {
+                        com.example.ui.components.SettingValueRow(
+                            title = Strings.t("cloud_sync", lang),
+                            value = null,
+                            subtitle = if (lang == "bn") "ক্লাউড সিঙ্ক ও ব্যাকআপ ফাইল" else "Cloud sync & backup file",
+                            icon = Icons.Outlined.CloudSync,
+                            onClick = { subScreen = "backup" },
+                            modifier = Modifier.testTag("cloud_sync_tile")
+                        )
+                        if (currentUser != null) {
+                            com.example.ui.components.SettingValueRow(
+                                title = Strings.t("delete_account", lang),
+                                value = null,
+                                icon = Icons.Default.DeleteOutline,
+                                titleColor = MaterialTheme.colorScheme.error,
+                                onClick = { showDeleteConfirmDialog = true },
+                                modifier = Modifier.testTag("delete_account_tile")
+                            )
                         }
                     }
                 }
@@ -439,10 +361,9 @@ private fun MoreNavCard(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag(testTag),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -549,7 +470,7 @@ private fun CloudSyncBackupSubScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(androidx.compose.ui.graphics.Color.Transparent)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -568,7 +489,7 @@ private fun CloudSyncBackupSubScreen(
         // Cloud Status Banner
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (isFirebaseInitialized) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                 ),
@@ -706,7 +627,7 @@ private fun CloudSyncBackupSubScreen(
         // Google Drive / Share Backup Card
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -763,7 +684,7 @@ private fun CloudSyncBackupSubScreen(
         // Restore Backup Card
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -812,200 +733,111 @@ private fun DedicatedReminderSubScreen(
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
     val config = if (isDurud) settings.durud else settings.istigfar
-
-    var quietStart by remember(settings.quietHoursStart) { mutableStateOf(settings.quietHoursStart) }
-    var quietEnd by remember(settings.quietHoursEnd) { mutableStateOf(settings.quietHoursEnd) }
+    val bn = lang == "bn"
+    fun update(c: com.example.model.IstigfarDurudConfig) = if (isDurud) viewModel.updateDurudConfig(c) else viewModel.updateIstigfarConfig(c)
 
     val modes = listOf(
-        "interval_15" to (if (lang == "bn") "প্রতি ১৫ মিনিট পর পর" else "Every 15 minutes"),
-        "interval_30" to (if (lang == "bn") "প্রতি ৩০ মিনিট পর পর" else "Every 30 minutes"),
-        "interval_45" to (if (lang == "bn") "প্রতি ৪৫ মিনিট পর পর" else "Every 45 minutes"),
-        "interval_60" to (if (lang == "bn") "প্রতি ১ ঘণ্টা (৬০ মিনিট) পর পর" else "Every 1 hour (60 mins)"),
-        "interval_120" to (if (lang == "bn") "প্রতি ২ ঘণ্টা পর পর" else "Every 2 hours"),
-        "interval_180" to (if (lang == "bn") "প্রতি ৩ ঘণ্টা পর পর" else "Every 3 hours")
+        "interval_15" to (if (bn) "প্রতি ১৫ মিনিট" else "Every 15 minutes"),
+        "interval_30" to (if (bn) "প্রতি ৩০ মিনিট" else "Every 30 minutes"),
+        "interval_45" to (if (bn) "প্রতি ৪৫ মিনিট" else "Every 45 minutes"),
+        "interval_60" to (if (bn) "প্রতি ১ ঘণ্টা" else "Every hour"),
+        "interval_120" to (if (bn) "প্রতি ২ ঘণ্টা" else "Every 2 hours"),
+        "interval_180" to (if (bn) "প্রতি ৩ ঘণ্টা" else "Every 3 hours")
     )
+    var showModes by remember { mutableStateOf(false) }
+
+    // Quiet hours use the system time picker, so stored values are always valid HH:mm.
+    fun pickTime(current: String, onPicked: (String) -> Unit) {
+        val parts = runCatching { current.split(":").map { it.trim().toInt() } }.getOrDefault(listOf(23, 0))
+        android.app.TimePickerDialog(
+            context,
+            { _, hh, mm -> onPicked(String.format(java.util.Locale.US, "%02d:%02d", hh, mm)) },
+            parts.getOrElse(0) { 23 }, parts.getOrElse(1) { 0 }, true
+        ).show()
+    }
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            com.example.ui.components.ScreenTitle(title, leading = {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = com.example.ui.theme.AppColors.TextPrimary)
                 }
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            })
+        }
+        item {
+            com.example.ui.components.SettingsGroup {
+                com.example.ui.components.SettingSwitchRow(
+                    title = if (isDurud) (if (bn) "দরূদ স্মরণিকা" else "Durud reminders") else (if (bn) "ইস্তিগফার স্মরণিকা" else "Istigfar reminders"),
+                    checked = config.enabled,
+                    onCheckedChange = { update(config.copy(enabled = it)) }
+                )
+                com.example.ui.components.SettingValueRow(
+                    title = if (bn) "পুনরাবৃত্তি" else "Repeat",
+                    value = modes.firstOrNull { it.first == config.mode }?.second ?: modes[3].second,
+                    onClick = { if (config.enabled) showModes = true }
                 )
             }
         }
-
-        // Master Switch Card
         item {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            com.example.ui.components.SettingsGroup(title = Strings.t("quiet_hours", lang)) {
+                com.example.ui.components.SettingValueRow(
+                    title = if (bn) "শুরু" else "From",
+                    value = settings.quietHoursStart,
+                    onClick = { pickTime(settings.quietHoursStart) { viewModel.updateQuietHours(it, settings.quietHoursEnd) } }
+                )
+                com.example.ui.components.SettingValueRow(
+                    title = if (bn) "শেষ" else "Until",
+                    value = settings.quietHoursEnd,
+                    onClick = { pickTime(settings.quietHoursEnd) { viewModel.updateQuietHours(settings.quietHoursStart, it) } }
+                )
+                Text(
+                    Strings.t("quiet_hours_note", lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = com.example.ui.theme.AppColors.TextSecondary,
+                    modifier = Modifier.padding(horizontal = 6.dp)
+                )
+            }
+        }
+        item {
+            com.example.ui.components.GlowCard(modifier = Modifier.fillMaxWidth(), color = com.example.ui.theme.AppColors.WarmTintContainer, elevation = 0.dp) {
+                Text(
+                    text = if (isDurud) "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ" else "أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = com.example.ui.theme.AppColors.Secondary,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = if (isDurud) (if (bn) "হে আল্লাহ! মুহাম্মদ (সা.)-এর উপর রহমত বর্ষণ করুন।" else "O Allah, send blessings upon Muhammad.")
+                    else (if (bn) "আমি আল্লাহর নিকট ক্ষমা প্রার্থনা করছি এবং তাঁরই দিকে তওবা করছি।" else "I seek Allah's forgiveness and turn to Him in repentance."),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = com.example.ui.theme.AppColors.TextPrimary
+                )
+                Spacer(Modifier.height(14.dp))
+                com.example.ui.components.PrimaryPillButton(
+                    text = if (bn) "টেস্ট নোটিফিকেশন পাঠান" else "Send test notification",
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (isDurud) (if (lang == "bn") "দরূদ শরীফ স্মরণিকা চালু করুন" else "Enable Darud Reminders")
-                            else (if (lang == "bn") "ইস্তিগফার স্মরণিকা চালু করুন" else "Enable Istigfar Reminders"),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = if (config.enabled) (if (lang == "bn") "স্বয়ংক্রিয় নোটিফিকেশন সক্রিয়" else "Active")
-                            else (if (lang == "bn") "বর্তমানে বন্ধ রয়েছে" else "Disabled"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (config.enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Switch(
-                        checked = config.enabled,
-                        onCheckedChange = { isEnabled ->
-                            val updated = config.copy(enabled = isEnabled)
-                            if (isDurud) viewModel.updateDurudConfig(updated) else viewModel.updateIstigfarConfig(updated)
-                        }
-                    )
+                    viewModel.sendTestReminder(isIstigfar = !isDurud)
+                    Toast.makeText(context, if (bn) "টেস্ট নোটিফিকেশন পাঠানো হয়েছে" else "Test notification sent", Toast.LENGTH_SHORT).show()
                 }
             }
         }
+    }
 
-        // Interval Mode Selector
-        if (config.enabled) {
-            item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = Strings.t("reminder_mode", lang),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-
-                        modes.forEach { (modeKey, label) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val updated = config.copy(mode = modeKey)
-                                        if (isDurud) viewModel.updateDurudConfig(updated) else viewModel.updateIstigfarConfig(updated)
-                                    }
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = config.mode == modeKey,
-                                    onClick = {
-                                        val updated = config.copy(mode = modeKey)
-                                        if (isDurud) viewModel.updateDurudConfig(updated) else viewModel.updateIstigfarConfig(updated)
-                                    }
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(label, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Quiet Hours Card
-            item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = Strings.t("quiet_hours", lang),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = if (lang == "bn") "উদাহরণ: 23:00 থেকে 04:00 (রাত ১১টা থেকে ভোর ৪টা পর্যন্ত নোটিফিকেশন বন্ধ থাকবে)"
-                            else "e.g. 23:00 to 04:00 (Reminders suppressed during sleep)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = quietStart,
-                                onValueChange = {
-                                    quietStart = it
-                                    viewModel.updateQuietHours(it, quietEnd)
-                                },
-                                label = { Text(if (lang == "bn") "শুরু (HH:mm)" else "Start (HH:mm)") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = quietEnd,
-                                onValueChange = {
-                                    quietEnd = it
-                                    viewModel.updateQuietHours(quietStart, it)
-                                },
-                                label = { Text(if (lang == "bn") "শেষ (HH:mm)" else "End (HH:mm)") },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Sample Phrase Preview & Test Button
-            item {
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = if (isDurud) "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ" else "أَسْتَغْفِرُ اللَّهَ وَأَتُوبُ إِلَيْهِ",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = if (isDurud) (if (lang == "bn") "হে আল্লাহ! মুহাম্মদ (সা.)-এর উপর রহমত বর্ষণ করুন।" else "O Allah, send blessings upon Muhammad.")
-                            else (if (lang == "bn") "আমি আল্লাহর নিকট ক্ষমা প্রার্থনা করছি এবং তাঁরই দিকে তওবা করছি।" else "I ask Allah for forgiveness and repent unto Him."),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Button(
-                            onClick = {
-                                viewModel.sendTestReminder(isIstigfar = !isDurud)
-                                Toast.makeText(
-                                    context,
-                                    if (isDurud) (if (lang == "bn") "দরূদ স্মরণিকা টেস্ট নোটিফিকেশন পাঠানো হয়েছে!" else "Durud test reminder sent")
-                                    else (if (lang == "bn") "ইস্তিগফার স্মরণিকা টেস্ট নোটিফিকেশন পাঠানো হয়েছে!" else "Istigfar test reminder sent"),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.NotificationsActive, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(if (lang == "bn") "টেস্ট নোটিফিকেশন পাঠান" else "Send Test Notification")
-                        }
-                    }
+    if (showModes) {
+        com.example.ui.components.SoftSheet(title = if (bn) "পুনরাবৃত্তি" else "Repeat", onDismiss = { showModes = false }) {
+            modes.forEach { (key, label) ->
+                com.example.ui.components.SettingRow(title = label, onClick = {
+                    update(config.copy(mode = key))
+                    showModes = false
+                }) {
+                    RadioButton(selected = config.mode == key, onClick = null)
                 }
             }
         }
@@ -1026,7 +858,7 @@ private fun QuranBrowserSubScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(androidx.compose.ui.graphics.Color.Transparent)
     ) {
         // Browser Controls Bar
         Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
@@ -1125,7 +957,7 @@ private fun SettingsSubScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(androidx.compose.ui.graphics.Color.Transparent)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -1144,7 +976,7 @@ private fun SettingsSubScreen(
         // Language Selection
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1178,7 +1010,7 @@ private fun SettingsSubScreen(
         // Calculation Method
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1221,7 +1053,7 @@ private fun SettingsSubScreen(
         // Location & 64 Districts Selector
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1257,7 +1089,7 @@ private fun SettingsSubScreen(
         // Battery Optimization
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1376,7 +1208,7 @@ private fun AuthSubScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(androidx.compose.ui.graphics.Color.Transparent)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -1397,7 +1229,7 @@ private fun AuthSubScreen(
             // Already Signed In
             item {
                 Card(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
                     modifier = Modifier.fillMaxWidth().testTag("authenticated_user_profile_card")
@@ -1517,7 +1349,7 @@ private fun AuthSubScreen(
             // Sign in / Registration Form
             item {
                 Card(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     modifier = Modifier.fillMaxWidth()
                 ) {

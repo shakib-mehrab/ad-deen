@@ -20,7 +20,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const MASTER = join(ROOT, 'assets', 'logo', 'ad-deen-logo.svg');
 const RES = join(ROOT, 'app', 'src', 'main', 'res');
-const svg = readFileSync(MASTER, 'utf8');
+// Strip XML comments first: the master's documentation comment mentions the group tags,
+// and must never be mistaken for the real groups.
+const svg = readFileSync(MASTER, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
 
 // ---------- SVG parsing (paths only, see rules in the master SVG) ----------
 function group(id) {
@@ -41,6 +43,11 @@ function paths(groupBody) {
 }
 const bgPaths = paths(group('background'));
 const fgPaths = paths(group('foreground'));
+// Guard against the regression that shipped blank icons: the foreground must contain real artwork.
+if (fgPaths.length === 0 || fgPaths.some((p) => p.d === bgPaths[0]?.d)) {
+  throw new Error('Foreground group parsed incorrectly - check assets/logo/ad-deen-logo.svg');
+}
+console.log(`Parsed ${bgPaths.length} background path(s), ${fgPaths.length} foreground path(s)`);
 
 // ---------- Vector drawables ----------
 function vectorXml(list, { size = 108, viewport = 108, tx = 0, ty = 0, color } = {}) {

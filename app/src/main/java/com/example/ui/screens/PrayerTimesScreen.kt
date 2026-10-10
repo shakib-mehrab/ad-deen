@@ -1,485 +1,141 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.Place
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.example.alarm.NotificationChannels
+import com.example.alarm.SoundHelper
 import com.example.model.CalculationMethod
-import com.example.model.District
 import com.example.model.PrayerName
 import com.example.model.PrayerWindow
 import com.example.ui.MainViewModel
 import com.example.ui.Strings
-import com.example.ui.components.DistrictSelectionDialog
-import com.example.ui.components.PrayerSolarWindowCard
+import com.example.ui.components.*
+import com.example.ui.theme.AppColors
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+private fun waqtIcon(p: PrayerName): ImageVector = when (p) {
+    PrayerName.TAHAJJUD -> Icons.Rounded.Bedtime
+    PrayerName.FAJR -> Icons.Rounded.WbTwilight
+    PrayerName.DUHA -> Icons.Rounded.LightMode
+    PrayerName.DHUHR -> Icons.Rounded.WbSunny
+    PrayerName.ASR -> Icons.Rounded.WbCloudy
+    PrayerName.MAGHRIB -> Icons.Rounded.Brightness3
+    PrayerName.ISHA -> Icons.Rounded.NightsStay
+}
+
+/**
+ * Wakt screen: location & method, sun times, forbidden times, and one toggle row per waqt
+ * (switch = start alarm). Tapping a row opens that waqt's notification sheet.
+ */
 @Composable
-fun PrayerTimesScreen(
-    viewModel: MainViewModel
-) {
+fun PrayerTimesScreen(viewModel: MainViewModel) {
     val settings by viewModel.settings.collectAsState()
     val schedule by viewModel.prayerSchedule.collectAsState()
     val liveTime by viewModel.liveTimeMillis.collectAsState()
     val lang = settings.language
+    val bn = lang == "bn"
 
     var showDistrictDialog by remember { mutableStateOf(false) }
     var showMethodDialog by remember { mutableStateOf(false) }
+    var sheetFor by remember { mutableStateOf<PrayerWindow?>(null) }
 
-    val timeFormat = remember {
-        SimpleDateFormat("hh:mm a", Locale.US).apply {
-            timeZone = TimeZone.getDefault()
-        }
-    }
-
-    val windows = schedule.allWindows()
+    val timeFormat = remember { SimpleDateFormat("hh:mm a", Locale.US).apply { timeZone = TimeZone.getDefault() } }
+    val method = CalculationMethod.fromId(settings.calcMethod)
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Solar Timing Window Header (as requested)
+        item { ScreenTitle(if (bn) "ওয়াক্ত" else "Wakt") }
+
+        // Sun times
         item {
-            PrayerSolarWindowCard(
-                schedule = schedule,
-                liveTime = liveTime,
-                lang = lang,
-                onClick = { }
-            )
-        }
-
-        // Location & Method Info Bar
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = com.example.ui.theme.AppColors.Surface
-                ),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.LocationOn,
-                                contentDescription = null,
-                                tint = com.example.ui.theme.AppColors.Secondary
-                            )
-                            Column {
-                                Text(
-                                    text = settings.district,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = com.example.ui.theme.AppColors.TextPrimary
-                                )
-                                Text(
-                                    text = "${String.format(Locale.US, "%.3f", settings.lat)}° N, ${String.format(Locale.US, "%.3f", settings.lng)}° E",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                    color = com.example.ui.theme.AppColors.TextSecondary
-                                )
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = { showDistrictDialog = true },
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, com.example.ui.theme.AppColors.Secondary),
-                            modifier = Modifier.testTag("change_location_button")
-                        ) {
-                            Text(
-                                Strings.t("change_location", lang),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                ),
-                                color = com.example.ui.theme.AppColors.Secondary
-                            )
-                        }
-                    }
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        thickness = 1.dp,
-                        color = com.example.ui.theme.AppColors.Divider
-                    )
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showMethodDialog = true },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = Strings.t("calculation_method", lang),
-                                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                                color = com.example.ui.theme.AppColors.TextSecondary
-                            )
-                            Text(
-                                text = CalculationMethod.fromId(settings.calcMethod).titleEn,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                ),
-                                color = com.example.ui.theme.AppColors.Secondary
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = com.example.ui.theme.AppColors.TextSecondary
-                        )
-                    }
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SunTile(Icons.Rounded.WbSunny, Strings.t("sunrise", lang), timeFormat.format(Date(schedule.sunriseMillis)), Modifier.weight(1f))
+                SunTile(Icons.Rounded.WbTwilight, Strings.t("sunset", lang), timeFormat.format(Date(schedule.maghrib.startTimeMillis)), Modifier.weight(1f))
+                SunTile(Icons.Rounded.DarkMode, if (bn) "মধ্যরাত" else "Midnight", timeFormat.format(Date(schedule.midnightMillis)), Modifier.weight(1f))
             }
         }
 
-        // Celestial Horizon Bar: Sunrise, Sunset & Islamic Midnight (distinct icons & colors)
+        // Location & method (settings-row style)
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Sunrise
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    color = com.example.ui.theme.AppColors.WarmTintContainer,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(
-                                imageVector = Icons.Default.WbSunny,
-                                contentDescription = null,
-                                tint = com.example.ui.theme.AppColors.Secondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = Strings.t("sunrise", lang),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                ),
-                                color = com.example.ui.theme.AppColors.Secondary
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = timeFormat.format(Date(schedule.sunriseMillis)),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            color = com.example.ui.theme.AppColors.TextPrimary
-                        )
-                    }
-                }
-
-                // Sunset
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    color = com.example.ui.theme.AppColors.WarmTintContainer,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(
-                                imageVector = Icons.Default.WbTwilight,
-                                contentDescription = null,
-                                tint = com.example.ui.theme.AppColors.Secondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = Strings.t("sunset", lang),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                ),
-                                color = com.example.ui.theme.AppColors.Secondary
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = timeFormat.format(Date(schedule.maghrib.startTimeMillis)),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            color = com.example.ui.theme.AppColors.TextPrimary
-                        )
-                    }
-                }
-
-                // Midnight
-                Surface(
-                    modifier = Modifier.weight(1f),
-                    color = com.example.ui.theme.AppColors.WarmTintContainer,
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        horizontalAlignment = Alignment.Start
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Icon(
-                                imageVector = Icons.Default.Bedtime,
-                                contentDescription = null,
-                                tint = com.example.ui.theme.AppColors.Secondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = Strings.t("midnight", lang),
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                ),
-                                color = com.example.ui.theme.AppColors.Secondary
-                            )
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = timeFormat.format(Date(schedule.midnightMillis)),
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            color = com.example.ui.theme.AppColors.TextPrimary
-                        )
-                    }
-                }
-            }
-        }
-
-        // Forbidden Prayer Times (makruh) - shared card, same engine as all other times
-        item {
-            com.example.ui.components.ForbiddenTimesCard(
-                schedule = schedule,
-                liveTime = liveTime,
-                lang = lang,
-                showDescriptions = true
-            )
-        }
-
-        // 7 Prayer Windows List
-        items(windows) { window ->
-            val isCurrent = liveTime in window.startTimeMillis until window.endTimeMillis
-            val prayerKey = window.prayer.id
-            val title = if (lang == "bn") window.prayer.titleBn else window.prayer.titleEn
-
-            val startToggleKey = "start_$prayerKey"
-            val endToggleKey = "end_$prayerKey"
-
-            val startAlarmEnabled = settings.alarmToggles[startToggleKey] ?: true
-            val endAlarmEnabled = settings.alarmToggles[endToggleKey] ?: true
-
-            val startStr = timeFormat.format(Date(window.startTimeMillis))
-            val endStr = timeFormat.format(Date(window.endTimeMillis))
-
-            // Current prayer card (Wakt, Dhuhr): white surface, 2dp #874D14 border
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("prayer_window_${prayerKey}"),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = com.example.ui.theme.AppColors.Surface
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(
-                    if (isCurrent) 2.dp else 1.dp,
-                    if (isCurrent) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
+            Spacer(Modifier.height(6.dp))
+            SettingsGroup {
+                SettingValueRow(
+                    title = Strings.t("location", lang),
+                    value = settings.district,
+                    icon = Icons.Outlined.Place,
+                    onClick = { showDistrictDialog = true },
+                    modifier = Modifier.testTag("change_location_button")
                 )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.titleLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp
-                                    ),
-                                    color = com.example.ui.theme.AppColors.TextPrimary
-                                )
-                                if (isCurrent) {
-                                    // "Wakt" badge = #FFB030 fill + #1F1F1F text
-                                    Surface(
-                                        color = com.example.ui.theme.AppColors.Primary,
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text(
-                                            text = if (lang == "bn") "ওয়াক্ত" else "Wakt",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp
-                                            ),
-                                            color = com.example.ui.theme.AppColors.OnPrimary,
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = "$startStr – $endStr",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 13.sp,
-                                    fontFeatureSettings = "tnum"
-                                ),
-                                color = if (isCurrent) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.TextSecondary
-                            )
-                        }
-
-                        // Countdown box = #874D14 border/text on white (tabular numerals)
-                        if (isCurrent) {
-                            val remainingSeconds = ((window.endTimeMillis - liveTime) / 1000).coerceAtLeast(0)
-                            val remMins = remainingSeconds / 60
-                            val remSecs = remainingSeconds % 60
-                            Surface(
-                                color = com.example.ui.theme.AppColors.Surface,
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(2.dp, com.example.ui.theme.AppColors.Secondary)
-                            ) {
-                                Text(
-                                    text = String.format("%02d:%02d", remMins, remSecs),
-                                    style = MaterialTheme.typography.headlineSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 20.sp,
-                                        fontFeatureSettings = "tnum"
-                                    ),
-                                    color = com.example.ui.theme.AppColors.Secondary,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        thickness = 1.dp,
-                        color = com.example.ui.theme.AppColors.Divider
-                    )
-
-                    // Alarm Toggles: ON = #874D14 track + white thumb; OFF = #E3D9C0 track + white thumb.
-                    // Keep alarm icons in #874D14. Touch target at least 48x48dp.
-                    val toggleColors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = com.example.ui.theme.AppColors.Secondary,
-                        checkedBorderColor = com.example.ui.theme.AppColors.Secondary,
-                        uncheckedThumbColor = Color.White,
-                        uncheckedTrackColor = com.example.ui.theme.AppColors.DisabledTrack,
-                        uncheckedBorderColor = com.example.ui.theme.AppColors.DisabledTrack
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Start Alarm Toggle
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.minimumInteractiveComponentSize()
-                        ) {
-                            Icon(
-                                imageVector = if (startAlarmEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
-                                contentDescription = null,
-                                tint = com.example.ui.theme.AppColors.Secondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = Strings.t("start_alarm", lang),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
-                                color = com.example.ui.theme.AppColors.TextPrimary
-                            )
-                            Switch(
-                                checked = startAlarmEnabled,
-                                onCheckedChange = { viewModel.toggleAlarm(startToggleKey, it) },
-                                colors = toggleColors,
-                                modifier = Modifier.testTag("start_alarm_switch_$prayerKey")
-                            )
-                        }
-
-                        // 15m End Warning Alarm Toggle
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.minimumInteractiveComponentSize()
-                        ) {
-                            Icon(
-                                imageVector = if (endAlarmEnabled) Icons.Default.AlarmOn else Icons.Default.AlarmOff,
-                                contentDescription = null,
-                                tint = com.example.ui.theme.AppColors.Secondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = Strings.t("end_warning_15m", lang),
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
-                                color = com.example.ui.theme.AppColors.TextPrimary
-                            )
-                            Switch(
-                                checked = endAlarmEnabled,
-                                onCheckedChange = { viewModel.toggleAlarm(endToggleKey, it) },
-                                colors = toggleColors,
-                                modifier = Modifier.testTag("end_alarm_switch_$prayerKey")
-                            )
-                        }
-                    }
-                }
+                SettingValueRow(
+                    title = Strings.t("calculation_method", lang),
+                    value = method.id,
+                    subtitle = if (bn) method.titleBn else method.titleEn,
+                    icon = Icons.Outlined.Calculate,
+                    onClick = { showMethodDialog = true }
+                )
             }
+        }
+
+        item {
+            Spacer(Modifier.height(6.dp))
+            SectionHeader(if (bn) "নামাজের অ্যালার্ম" else "Prayer alarms")
+            Text(
+                if (bn) "সুইচ = ওয়াক্ত শুরুর অ্যালার্ম। বিস্তারিত সেটিংসের জন্য ট্যাপ করুন।" else "Switch = alarm when the waqt starts. Tap a row for more options.",
+                style = MaterialTheme.typography.bodySmall,
+                color = AppColors.TextSecondary
+            )
+        }
+
+        items(schedule.allWindows(), key = { it.prayer.id }) { window ->
+            val key = window.prayer.id
+            val isCurrent = liveTime in window.startTimeMillis until window.endTimeMillis
+            val startOn = settings.alarmToggles["start_$key"] != false
+            ToggleRow(
+                icon = waqtIcon(window.prayer),
+                title = (if (bn) window.prayer.titleBn else window.prayer.titleEn) + if (isCurrent) (if (bn) "  • চলমান" else "  • now") else "",
+                subtitle = "${timeFormat.format(Date(window.startTimeMillis))} – ${timeFormat.format(Date(window.endTimeMillis))}",
+                checked = startOn,
+                onCheckedChange = { viewModel.toggleAlarm("start_$key", it) },
+                highlighted = isCurrent,
+                onClick = { sheetFor = window },
+                modifier = Modifier.testTag("prayer_window_$key"),
+                switchTag = "start_alarm_switch_$key"
+            )
+        }
+
+        item {
+            Spacer(Modifier.height(6.dp))
+            ForbiddenTimesCard(schedule = schedule, liveTime = liveTime, lang = lang, showDescriptions = true)
         }
     }
 
-    // District Selector Dialog
+    sheetFor?.let { w -> WaqtNotificationSheet(viewModel, w, lang) { sheetFor = null } }
+
     if (showDistrictDialog) {
         DistrictSelectionDialog(
             districts = viewModel.districts,
@@ -490,84 +146,90 @@ fun PrayerTimesScreen(
                 viewModel.selectDistrict(it)
                 showDistrictDialog = false
             },
-            onGpsSelect = {
-                viewModel.requestGpsLocation { success ->
-                    if (success) showDistrictDialog = false
-                }
-            }
+            onGpsSelect = { viewModel.requestGpsLocation { success -> if (success) showDistrictDialog = false } }
         )
     }
 
-    // Calculation Method Dialog
     if (showMethodDialog) {
-        CalculationMethodDialog(
-            currentMethod = settings.calcMethod,
-            lang = lang,
-            onDismiss = { showMethodDialog = false },
-            onSelect = {
-                viewModel.updateCalculationMethod(it.id)
-                showMethodDialog = false
+        SoftSheet(title = Strings.t("calc_method_label", lang), onDismiss = { showMethodDialog = false }) {
+            CalculationMethod.entries.forEach { m ->
+                val selected = m.id.equals(settings.calcMethod, ignoreCase = true)
+                SettingRow(
+                    title = if (bn) m.titleBn else m.titleEn,
+                    subtitle = "Fajr ${m.fajrAngle}° • Isha ${if (m == CalculationMethod.UMM_AL_QURA) "90 min" else "${m.ishaAngle}°"} • Hanafi Asr",
+                    onClick = {
+                        viewModel.updateCalculationMethod(m.id)
+                        showMethodDialog = false
+                    }
+                ) {
+                    RadioButton(selected = selected, onClick = null, colors = RadioButtonDefaults.colors(selectedColor = AppColors.Action))
+                }
             }
-        )
+        }
     }
 }
 
-private fun Modifier.scale(scale: Float): Modifier = this.then(
-    Modifier.size(width = (48 * scale).dp, height = (32 * scale).dp)
-)
-
-
-
 @Composable
-private fun CalculationMethodDialog(
-    currentMethod: String,
-    lang: String,
-    onDismiss: () -> Unit,
-    onSelect: (CalculationMethod) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(Strings.t("calc_method_label", lang)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                CalculationMethod.entries.forEach { method ->
-                    val isSelected = method.id.equals(currentMethod, ignoreCase = true)
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelect(method) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            RadioButton(selected = isSelected, onClick = { onSelect(method) })
-                            Column {
-                                Text(
-                                    text = if (lang == "bn") method.titleBn else method.titleEn,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                                )
-                                Text(
-                                    text = "Fajr: ${method.fajrAngle}° • Isha: ${if (method == CalculationMethod.UMM_AL_QURA) "90m" else "${method.ishaAngle}°"} (Hanafi Asr)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
+private fun SunTile(icon: ImageVector, label: String, time: String, modifier: Modifier) {
+    Column(
+        modifier.clip(RoundedCornerShape(16.dp)).background(AppColors.WarmTintContainer).padding(vertical = 12.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, null, tint = AppColors.Primary, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(time, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"), color = AppColors.TextPrimary, maxLines = 1)
+    }
+}
+
+/** Per-waqt notification sheet (reference): start alarm, 15-min warning, sound preview; Cancel / Save. */
+@Composable
+private fun WaqtNotificationSheet(viewModel: MainViewModel, window: PrayerWindow, lang: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val settings by viewModel.settings.collectAsState()
+    val bn = lang == "bn"
+    val key = window.prayer.id
+    var start by remember { mutableStateOf(settings.alarmToggles["start_$key"] != false) }
+    var end by remember { mutableStateOf(settings.alarmToggles["end_$key"] != false) }
+    val waqt = NotificationChannels.Waqt.of(window.prayer)
+    val custom = settings.customSoundNames[waqt.soundKey]
+    var player by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+    DisposableEffect(Unit) { onDispose { runCatching { player?.release() } } }
+
+    SoftSheet(
+        title = (if (bn) window.prayer.titleBn else window.prayer.titleEn) + if (bn) " নোটিফিকেশন" else " notification",
+        onDismiss = onDismiss,
+        cancelText = Strings.t("cancel", lang),
+        confirmText = Strings.t("save", lang),
+        onConfirm = {
+            viewModel.setWaqtAlarms(key, start, end)
+            onDismiss()
+        }
+    ) {
+        SettingSwitchRow(
+            title = if (bn) "ওয়াক্ত শুরুর অ্যালার্ম" else "Alarm when waqt starts",
+            subtitle = if (bn) "নিজস্ব সাউন্ডসহ ৪৫ সেকেন্ড পর্যন্ত বাজবে" else "Rings with its own sound for up to 45 s",
+            checked = start,
+            onCheckedChange = { start = it }
+        )
+        SettingSwitchRow(
+            title = Strings.t("end_warning_15m", lang),
+            subtitle = if (bn) "ওয়াক্ত শেষ হওয়ার ১৫ মিনিট আগে" else "Notification 15 minutes before it ends",
+            checked = end,
+            onCheckedChange = { end = it }
+        )
+        SettingRow(
+            title = if (bn) "অ্যালার্ম সাউন্ড" else "Alarm sound",
+            subtitle = custom ?: (if (bn) "ডিফল্ট টোন" else "Default ${window.prayer.titleEn.substringBefore(" /")} tone") +
+                (if (bn) " • পরিবর্তন: আরও › কাস্টম সাউন্ড" else " • change in More › Custom sounds"),
+            onClick = {
+                runCatching { player?.release() }
+                player = SoundHelper.playPreviewSound(context, waqt.soundKey)
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(Strings.t("cancel", lang))
+        ) {
+            Box(Modifier.size(34.dp).clip(CircleShape).background(AppColors.Surface), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = if (bn) "শুনুন" else "Preview", tint = AppColors.Secondary)
             }
         }
-    )
+    }
 }

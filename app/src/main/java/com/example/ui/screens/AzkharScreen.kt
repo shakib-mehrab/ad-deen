@@ -88,113 +88,54 @@ fun AzkharScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(androidx.compose.ui.graphics.Color.Transparent)
     ) {
         // App Brand Header & Arabic Font Size Controller
-        Row(
+        com.example.ui.components.ScreenTitle(
+            title = if (lang == "bn") "আযকার" else "Azkhar",
+            modifier = Modifier.padding(horizontal = 16.dp),
+            trailing = {
+                // Arabic font size control
+                Row(
+                    Modifier.clip(RoundedCornerShape(18.dp)).background(com.example.ui.theme.AppColors.WarmTintContainer),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { viewModel.updateArabicFontSize(settings.arabicFontSize - 2) }, modifier = Modifier.size(34.dp), enabled = settings.arabicFontSize > 18) {
+                        Text("A-", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = com.example.ui.theme.AppColors.Secondary)
+                    }
+                    IconButton(onClick = { viewModel.updateArabicFontSize(settings.arabicFontSize + 2) }, modifier = Modifier.size(34.dp), enabled = settings.arabicFontSize < 42) {
+                        Text("A+", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = com.example.ui.theme.AppColors.Secondary)
+                    }
+                }
+            }
+        )
+
+        // Segmented pill tabs (reference "Surah | Juz | Page")
+        androidx.compose.foundation.lazy.LazyRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(com.example.ui.theme.AppColors.WarmTintContainer)
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            com.example.ui.components.AdDeenBrandHeader(
-                logoSize = 36.dp,
-                showSubtitle = true,
-                subtitleText = if (lang == "bn") "দৈনিক আযকার ও দুআ" else "Daily Azkhar & Duas",
-                textColor = com.example.ui.theme.AppColors.Secondary
-            )
-
-            // Font-size control (A- / 26sp / A+) in a bordered pill with #874D14 text
-            Surface(
-                color = com.example.ui.theme.AppColors.Surface,
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    IconButton(
-                        onClick = { viewModel.updateArabicFontSize(settings.arabicFontSize - 2) },
-                        modifier = Modifier.size(36.dp),
-                        enabled = settings.arabicFontSize > 18
-                    ) {
-                        Text(
-                            text = "A-",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (settings.arabicFontSize > 18) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
-                        )
-                    }
-                    Text(
-                        text = "${settings.arabicFontSize}sp",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
-                            fontFeatureSettings = "tnum"
-                        ),
-                        color = com.example.ui.theme.AppColors.Secondary,
-                        modifier = Modifier.padding(horizontal = 2.dp)
-                    )
-                    IconButton(
-                        onClick = { viewModel.updateArabicFontSize(settings.arabicFontSize + 2) },
-                        modifier = Modifier.size(36.dp),
-                        enabled = settings.arabicFontSize < 42
-                    ) {
-                        Text(
-                            text = "A+",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = if (settings.arabicFontSize < 42) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
-                        )
-                    }
-                }
-            }
-        }
-
-        // Tab Row: horizontally scrollable with no truncated labels; active tab = #874D14 text + 3dp #FFB030 underline + bold; inactive = #5A4632
-        ScrollableTabRow(
-            selectedTabIndex = selectedTabIndex,
-            edgePadding = 16.dp,
-            containerColor = com.example.ui.theme.AppColors.Background,
-            contentColor = com.example.ui.theme.AppColors.Secondary,
-            indicator = { tabPositions ->
-                if (selectedTabIndex < tabPositions.size) {
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
-                        height = 3.dp,
-                        color = com.example.ui.theme.AppColors.Primary
-                    )
-                }
-            },
-            divider = {
-                HorizontalDivider(
-                    thickness = 1.dp,
-                    color = com.example.ui.theme.AppColors.Divider
-                )
-            }
-        ) {
-            tabTitles.forEachIndexed { index, title ->
+            items(tabTitles.size) { index ->
                 val isSelected = selectedTabIndex == index
-                Tab(
-                    selected = isSelected,
-                    onClick = { selectedTabIndex = index },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    text = {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 14.sp
-                            ),
-                            color = if (isSelected) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.TextSecondary,
-                            maxLines = 1
-                        )
-                    }
+                Text(
+                    text = tabTitles[index],
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal),
+                    color = if (isSelected) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.TextSecondary,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isSelected) com.example.ui.theme.AppColors.Surface else androidx.compose.ui.graphics.Color.Transparent)
+                        .clickable { selectedTabIndex = index }
+                        .padding(horizontal = 14.dp, vertical = 9.dp)
                 )
             }
         }
+        Spacer(Modifier.height(6.dp))
 
         Box(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
             when (selectedTabIndex) {
@@ -300,8 +241,7 @@ private fun AzkharListContent(
             Surface(
                 color = com.example.ui.theme.AppColors.WarmTintContainer,
                 shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -344,15 +284,12 @@ private fun AzkharListContent(
 
             // Azkhar card: white surface (or warm tint if completed) + 1dp #874D14@30% border
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (isCompleted) com.example.ui.theme.AppColors.WarmTintContainer else com.example.ui.theme.AppColors.Surface
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(
-                    1.dp,
-                    if (isCompleted) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
-                ),
+                border = if (isCompleted) BorderStroke(1.2.dp, com.example.ui.theme.AppColors.Primary) else null,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -535,15 +472,12 @@ private fun CustomZikrContent(
             val isCompleted = count >= item.target
 
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = if (isCompleted) com.example.ui.theme.AppColors.WarmTintContainer else com.example.ui.theme.AppColors.Surface
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(
-                    1.dp,
-                    if (isCompleted) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
-                ),
+                border = if (isCompleted) BorderStroke(1.2.dp, com.example.ui.theme.AppColors.Primary) else null,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -652,10 +586,9 @@ private fun AsmaulHusnaListContent(items: List<AllahName>, lang: String, arabicF
     ) {
         items(items) { name ->
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(

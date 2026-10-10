@@ -104,16 +104,16 @@ class LayoutRenderTest {
         val heights = mutableSetOf<Float>()
         for (lang in listOf("en", "bn")) for (scale in listOf(1.0f, 1.3f)) for (p in PrayerName.entries) {
             val w = PrayerWindow(p, schedule.dhuhr.startTimeMillis, schedule.dhuhr.endTimeMillis)
-            host(scale) { PrayerCountdownHeroCard(w, isActive = true, remainingMillis = 9 * 3_600_000L + 59 * 60_000L + 59_000L, lang = lang, onClick = {}) }
+            host(scale) { PrayerCountdownHeroCard(w, isActive = true, remainingMillis = 23 * 3_600_000L + 59 * 60_000L + 59_000L, lang = lang, onClick = {}) }
             val card = rule.onNodeWithTag("prayer_hero_card").getBoundsInRoot()
             val box = rule.onNodeWithTag("hero_countdown_box", useUnmergedTree = true).getBoundsInRoot()
             val name = rule.onNodeWithTag("hero_waqt_name", useUnmergedTree = true).getBoundsInRoot()
-            assertEquals("timer width fixed", 124f, (box.right - box.left).value, 0.5f)
-            assertEquals("timer height fixed", 48f, (box.bottom - box.top).value, 0.5f)
+            assertEquals("timer width fixed", 84f, (box.right - box.left).value, 0.5f)
+            assertEquals("timer height fixed", 26f, (box.bottom - box.top).value, 0.5f)
             assertTrue("$p/$lang/$scale name overlaps timer", name.right <= box.left + 0.5.dp)
             assertTrue("card fits 320dp", card.right <= 320.dp)
             if (scale == 1.0f) heights += (card.bottom - card.top).value
-            val timer = rule.onNodeWithText("09:59:59", useUnmergedTree = true).layout()
+            val timer = rule.onNodeWithText("23:59:59", useUnmergedTree = true).layout()
             assertTrue("$p/$lang/$scale timer clipped: ${timer.size} vs ${timer.multiParagraph.intrinsics.maxIntrinsicWidth}", timer.fitsFully())
             if (p == PrayerName.DUHA || p == PrayerName.TAHAJJUD) save("prayer_hero_card", "waqt_${p.id}_${lang}_x$scale")
         }

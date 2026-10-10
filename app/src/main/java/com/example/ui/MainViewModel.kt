@@ -100,6 +100,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val tomorrowSchedule: StateFlow<DailyPrayerSchedule> = combine(todayDate, settings) { d, s -> scheduleFor(nextDate(d), s) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, scheduleFor(nextDate(todayDateString), UserSettings()))
 
+    /** Night = between today's Maghrib and Fajr. Drives the time-aware theme; re-evaluated every 30 s. */
+    val isNightTime: StateFlow<Boolean> = combine(
+        flow { while (true) { emit(System.currentTimeMillis()); delay(30_000) } },
+        prayerSchedule
+    ) { now, s -> now >= s.maghrib.startTimeMillis || now < s.fajr.startTimeMillis }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     val currentStreak: StateFlow<Int> = combine(allDays, todayDate) { days, today -> calculateCurrentStreak(days, today) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
@@ -317,6 +325,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Turning a toggle off cancels every scheduled alarm of that waqt/type (via the settings-change reschedule). */
     fun toggleAlarm(key: String, enabled: Boolean) = updateSettings { it.copy(alarmToggles = it.alarmToggles + (key to enabled)) }
+
+    /** Saves both alarm toggles of one waqt at once (per-waqt notification sheet). */
+    fun setWaqtAlarms(prayerKey: String, start: Boolean, end: Boolean) = updateSettings {
+        it.copy(alarmToggles = it.alarmToggles + mapOf("start_$prayerKey" to start, "end_$prayerKey" to end))
+    }
 
     fun updateIstigfarConfig(config: IstigfarDurudConfig) = updateSettings { it.copy(istigfar = config) }
 

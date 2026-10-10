@@ -1,69 +1,77 @@
 package com.example.ui.theme
 
 import android.app.Activity
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Production Grade Cozy Warm Palette
-// Background: #FFFFE4
-// Primary:    #FFB030
-// Secondary:  #874D14
-// Black:      #1F1F1F
-private val CozyWarmColorScheme = lightColorScheme(
-    primary = PrimaryLight,
-    onPrimary = OnPrimaryLight,
-    primaryContainer = PrimaryContainerLight,
-    onPrimaryContainer = OnPrimaryContainerLight,
-    secondary = SecondaryLight,
-    onSecondary = OnSecondaryLight,
-    secondaryContainer = SecondaryContainerLight,
-    onSecondaryContainer = OnSecondaryContainerLight,
-    tertiary = TertiaryLight,
-    onTertiary = OnTertiaryLight,
-    tertiaryContainer = TertiaryContainerLight,
-    onTertiaryContainer = OnTertiaryContainerLight,
-    background = BackgroundLight, // Exact #FFFFE4
-    onBackground = OnBackgroundLight, // Exact #1F1F1F
-    surface = SurfaceLight, // Crisp white surfaces floating seamlessly on #FFFFE4
-    onSurface = OnSurfaceLight, // Exact #1F1F1F
-    surfaceVariant = SurfaceVariantLight,
-    onSurfaceVariant = OnSurfaceVariantLight,
-    outline = OutlineLight,
-    outlineVariant = OutlineVariantLight
-)
+private fun colorSchemeFor(p: AdDeenPalette) = if (p.isNight) {
+    darkColorScheme(
+        primary = p.primary, onPrimary = p.onPrimary,
+        primaryContainer = p.warmTintContainer, onPrimaryContainer = p.secondary,
+        secondary = p.secondary, onSecondary = p.onSecondary,
+        secondaryContainer = p.warmTintAlternate, onSecondaryContainer = p.textPrimary,
+        tertiary = p.secondary, onTertiary = p.onSecondary,
+        tertiaryContainer = p.warmTintContainer, onTertiaryContainer = p.secondary,
+        background = p.background, onBackground = p.textPrimary,
+        surface = p.surface, onSurface = p.textPrimary,
+        surfaceVariant = p.warmTintContainer, onSurfaceVariant = p.textSecondary,
+        surfaceContainer = p.surface, surfaceContainerHigh = p.surfaceElevated, surfaceContainerLow = p.surface,
+        outline = p.borderMedium, outlineVariant = p.divider
+    )
+} else {
+    lightColorScheme(
+        // Filled buttons, radios, sliders use the brand brown by day (amber stays an accent).
+        primary = p.secondary, onPrimary = p.onSecondary,
+        primaryContainer = p.warmTintContainer, onPrimaryContainer = p.secondary,
+        secondary = p.secondary, onSecondary = p.onSecondary,
+        secondaryContainer = p.warmTintAlternate, onSecondaryContainer = p.textPrimary,
+        tertiary = p.secondary, onTertiary = p.onSecondary,
+        tertiaryContainer = p.warmTintContainer, onTertiaryContainer = p.secondary,
+        background = p.background, onBackground = p.textPrimary,
+        surface = p.surface, onSurface = p.textPrimary,
+        surfaceVariant = p.warmTintContainer, onSurfaceVariant = p.textSecondary,
+        surfaceContainer = p.surface, surfaceContainerHigh = p.surfaceElevated, surfaceContainerLow = p.surface,
+        outline = p.borderMedium, outlineVariant = p.divider
+    )
+}
 
+/**
+ * Time-aware theme. [isNight] comes from the prayer schedule (Maghrib -> Fajr) or system dark mode.
+ * The switch cross-fades over ~1.2 s so the whole app "turns to night" smoothly.
+ * [lang] picks the font family: Poppins for English, Hind Siliguri for Bangla.
+ */
 @Composable
 fun AdDinTheme(
-    darkTheme: Boolean = false,
-    dynamicColor: Boolean = false,
+    isNight: Boolean = false,
+    lang: String = "en",
     content: @Composable () -> Unit
 ) {
-    val colorScheme = CozyWarmColorScheme
+    val t by animateFloatAsState(if (isNight) 1f else 0f, animationSpec = tween(1200), label = "day_night")
+    val palette = when (t) {
+        0f -> DayPalette
+        1f -> NightPalette
+        else -> lerpPalette(DayPalette, NightPalette, t)
+    }
+    AppColors.palette = palette
 
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as? Activity)?.window
-            if (window != null) {
-                // Ensure status and navigation bars blend seamlessly with #FFFFE4
-                window.statusBarColor = BackgroundLight.toArgb()
-                window.navigationBarColor = BackgroundLight.toArgb()
-                WindowCompat.getInsetsController(window, view).apply {
-                    isAppearanceLightStatusBars = true
-                    isAppearanceLightNavigationBars = true
-                }
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !palette.isNight
+                isAppearanceLightNavigationBars = !palette.isNight
             }
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    MaterialTheme(colorScheme = colorSchemeFor(palette), typography = androidx.compose.runtime.remember(lang) { appTypography(lang) }, content = content)
 }

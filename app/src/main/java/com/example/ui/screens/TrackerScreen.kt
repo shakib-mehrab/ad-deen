@@ -69,18 +69,19 @@ fun TrackerScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(androidx.compose.ui.graphics.Color.Transparent)
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(vertical = 16.dp),
+        contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        item { com.example.ui.components.ScreenTitle(if (lang == "bn") "আমল ট্র্যাকার" else "Amal Tracker") }
+
         // Date Selector Bar: White surface + 1dp #874D14@30% border, 48dp targets, no clipping on Today
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
             ) {
                 Row(
                     modifier = Modifier
@@ -201,10 +202,9 @@ fun TrackerScreen(
         // Score Card: "12/100" at 32sp in #874D14, with a progress ring (#FFB030 progress on #F0E6C8 track). Current/Best streak in #5A4632 12sp
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth().testTag("day_score_card")
             ) {
                 Row(
@@ -306,7 +306,6 @@ fun TrackerScreen(
                         Surface(
                             color = com.example.ui.theme.AppColors.WarmTintContainer,
                             shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
@@ -406,10 +405,9 @@ fun TrackerScreen(
 
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -458,10 +456,9 @@ fun TrackerScreen(
 
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
@@ -492,10 +489,9 @@ fun TrackerScreen(
 
         item {
             Card(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -564,10 +560,9 @@ private fun PrayerTrackItem(
     onStatusChange: (PrayerStatus) -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-        border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth().testTag("prayer_track_$prayerKey")
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -651,14 +646,10 @@ private fun StatusButton(
 ) {
     Surface(
         modifier = modifier
-            .heightIn(min = 48.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .heightIn(min = 52.dp)
+            .clip(RoundedCornerShape(14.dp))
             .clickable(enabled = enabled, onClick = onClick),
-        color = if (isSelected) com.example.ui.theme.AppColors.Primary else com.example.ui.theme.AppColors.Surface,
-        border = BorderStroke(
-            1.dp,
-            if (isSelected) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.Secondary.copy(alpha = 0.40f)
-        )
+        color = if (isSelected) com.example.ui.theme.AppColors.Primary.copy(alpha = 0.28f) else com.example.ui.theme.AppColors.WarmTintContainer
     ) {
         Column(
             modifier = Modifier
@@ -676,7 +667,7 @@ private fun StatusButton(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
                         modifier = Modifier.size(13.dp),
-                        tint = com.example.ui.theme.AppColors.OnPrimary
+                        tint = com.example.ui.theme.AppColors.Secondary
                     )
                 }
                 Text(
@@ -685,7 +676,7 @@ private fun StatusButton(
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                         fontSize = 12.sp
                     ),
-                    color = if (isSelected) com.example.ui.theme.AppColors.OnPrimary else com.example.ui.theme.AppColors.TextSecondary,
+                    color = if (isSelected) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.TextSecondary,
                     maxLines = 1
                 )
             }
@@ -696,7 +687,7 @@ private fun StatusButton(
                     fontWeight = FontWeight.SemiBold,
                     fontFeatureSettings = "tnum"
                 ),
-                color = if (isSelected) com.example.ui.theme.AppColors.OnPrimary else com.example.ui.theme.AppColors.TextSecondary
+                color = if (isSelected) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.TextSecondary
             )
         }
     }
@@ -732,9 +723,9 @@ private fun NaflCheckboxRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Checkbox(
+        com.example.ui.components.SoftSwitch(
             checked = checked,
-            onCheckedChange = { if (enabled) onCheckedChange() },
+            onCheckedChange = if (enabled) ({ _: Boolean -> onCheckedChange() }) else null,
             enabled = enabled
         )
     }
@@ -762,9 +753,9 @@ private fun SectionCheckboxRow(
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.onSurface
         )
-        Checkbox(
+        com.example.ui.components.SoftSwitch(
             checked = checked,
-            onCheckedChange = { if (enabled) onCheckedChange() },
+            onCheckedChange = if (enabled) ({ _: Boolean -> onCheckedChange() }) else null,
             enabled = enabled
         )
     }
@@ -790,10 +781,9 @@ private fun MonthlyCalendarCard(
     val curMonth = cal.get(Calendar.MONTH) + 1
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-        border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -911,10 +901,9 @@ private fun ScoreTrendsCard(allDays: List<DayRecord>, lang: String) {
     val quranDays = past7Dates.count { it.quran }
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
-        border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(14.dp)) {

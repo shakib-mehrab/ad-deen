@@ -93,13 +93,13 @@ fun AdDeenLogo(
         modifier = modifier
             .size(size)
             .scale(scale)
-            .shadow(6.dp, CircleShape, spotColor = Color(0x33874D14))
+            .shadow(8.dp, CircleShape, ambientColor = com.example.ui.theme.AppColors.Glow, spotColor = com.example.ui.theme.AppColors.Glow)
             .clip(CircleShape)
             .background(
                 Brush.radialGradient(
                     colors = listOf(
-                        Color(0xFF874D14),
-                        Color(0xFF1F1F1F)
+                        Color(0xFF9A5A1C),
+                        Color(0xFF5E3208)
                     )
                 )
             )
@@ -111,7 +111,7 @@ fun AdDeenLogo(
             contentDescription = "Ad-Deen Official Logo",
             modifier = Modifier
                 .fillMaxSize()
-                .padding(size * 0.08f)
+                .padding(size * 0.14f)
         )
     }
 }

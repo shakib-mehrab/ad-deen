@@ -51,9 +51,9 @@ fun ForbiddenTimesCard(
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .testTag(testTag),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = if (active != null) AppColors.WarmTintAlternate else AppColors.Surface),
-        border = BorderStroke(1.dp, if (active != null) AppColors.Secondary else AppColors.BorderSubtle),
+        border = if (active != null) BorderStroke(1.2.dp, AppColors.Primary) else null,
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -66,18 +66,18 @@ fun ForbiddenTimesCard(
                 )
                 Text(
                     text = Strings.t("forbidden_times", lang),
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 16.sp),
-                    color = AppColors.Secondary,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = AppColors.TextPrimary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
                 if (active != null) {
-                    Surface(color = AppColors.Secondary, shape = RoundedCornerShape(6.dp)) {
+                    Surface(color = AppColors.Action, shape = RoundedCornerShape(8.dp)) {
                         Text(
                             text = if (isBn) "চলমান" else "ACTIVE",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
-                            color = AppColors.OnSecondary,
+                            color = AppColors.OnAction,
                             maxLines = 1,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                         )
@@ -101,7 +101,7 @@ fun ForbiddenTimesCard(
                 Surface(
                     color = if (isCur) AppColors.WarmTintAlternate else AppColors.WarmTintContainer,
                     shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, if (isCur) AppColors.Secondary else AppColors.BorderSubtle),
+                    border = if (isCur) BorderStroke(1.2.dp, AppColors.Primary) else null,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(

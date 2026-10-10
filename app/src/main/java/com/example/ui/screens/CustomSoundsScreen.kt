@@ -169,7 +169,7 @@ fun CustomSoundsAndLogoSubScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(androidx.compose.ui.graphics.Color.Transparent)
                 .padding(padding)
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(vertical = 16.dp),
@@ -181,7 +181,7 @@ fun CustomSoundsAndLogoSubScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("arabic_font_card"),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(22.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
@@ -269,7 +269,7 @@ fun CustomSoundsAndLogoSubScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("hijri_adjustment_card"),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(22.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {

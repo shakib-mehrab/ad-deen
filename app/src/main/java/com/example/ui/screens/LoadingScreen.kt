@@ -30,7 +30,7 @@ fun LoadingScreen(
 
     LaunchedEffect(Unit) {
         startAnim = true
-        delay(1800L) // Graceful presentation time
+        delay(1300L)
         onFinished()
     }
 
@@ -49,7 +49,7 @@ fun LoadingScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFFFFFE4))
+            .background(com.example.ui.theme.AppColors.BackgroundBrush)
             .testTag("app_loading_screen"),
         contentAlignment = Alignment.Center
     ) {
@@ -76,7 +76,7 @@ fun LoadingScreen(
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontSize = 34.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF874D14), // Secondary Warm Chestnut
+                    color = com.example.ui.theme.AppColors.Secondary,
                     letterSpacing = 1.sp
                 )
             )
@@ -87,7 +87,7 @@ fun LoadingScreen(
                 text = "أَدِّين",
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontSize = 20.sp,
-                    color = Color(0xFF1F1F1F), // Clean Black #1F1F1F
+                    color = com.example.ui.theme.AppColors.TextPrimary,
                     letterSpacing = 2.sp
                 )
             )
@@ -99,7 +99,7 @@ fun LoadingScreen(
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
-                    color = Color(0xFFFFB030) // Warm Primary Amber accent
+                    color = com.example.ui.theme.AppColors.TextSecondary
                 )
             )
 
@@ -108,9 +108,9 @@ fun LoadingScreen(
             // Subtle loading indicator
             CircularProgressIndicator(
                 modifier = Modifier.size(28.dp),
-                color = Color(0xFFFFB030),
+                color = com.example.ui.theme.AppColors.Primary,
                 strokeWidth = 2.5.dp,
-                trackColor = Color(0xFFFFEBD9)
+                trackColor = com.example.ui.theme.AppColors.ProgressTrack
             )
         }
     }
