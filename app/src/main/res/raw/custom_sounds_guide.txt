@@ -1,0 +1,15 @@
+Ad-Deen Custom Notification Sounds Directory
+---------------------------------------------
+Upload custom audio files (.mp3, .ogg, or .wav) here or in the device app folder:
+app/src/main/res/raw/
+
+File naming conventions (all lowercase, no spaces):
+- istigfar_sound.mp3 -> for Istigfar periodic reminders
+- darud_sound.mp3    -> for Darud Sharif reminders
+- fajr_sound.mp3     -> for Fajr prayer alerts
+- duhr_sound.mp3     -> for Dhuhr prayer alerts
+- asr_sound.mp3      -> for Asr prayer alerts
+- maghrib_sound.mp3  -> for Maghrib prayer alerts
+- isha_sound.mp3     -> for Isha prayer alerts
+
+Note: If any file is missing, the app automatically falls back to the system default notification sound.

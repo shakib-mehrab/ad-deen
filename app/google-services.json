@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "258983954163",
+    "project_id": "addin-5552a",
+    "storage_bucket": "addin-5552a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:258983954163:android:e2c3606142784352f51986",
+        "android_client_info": {
+          "package_name": "com.aistudio.addin.mqzpvt"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3Bq6pE8WXkkGYxekZ24Ufk1cPBwch1Ps"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

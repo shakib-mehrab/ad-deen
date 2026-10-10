@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background Gradient: Rich Warm Chestnut to Deep Umber -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9C5A1C"/>
+      <stop offset="100%" stop-color="#6E3C0D"/>
+    </linearGradient>
+
+    <!-- Golden Amber Gradient for Crescent and Finial -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFC857"/>
+      <stop offset="100%" stop-color="#FFA000"/>
+    </linearGradient>
+
+    <!-- Warm Cream Gradient for Mosque Dome -->
+    <linearGradient id="creamGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#FFF0CC"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="1024" height="1024" fill="url(#bgGrad)"/>
+
+  <!-- Subtle Ambient Glow Behind Sacred Geometry -->
+  <circle cx="512" cy="512" r="320" fill="#FFA000" opacity="0.12"/>
+
+  <!-- Geometric Mosque Dome & Base (Centered, sitting gracefully inside crescent) -->
+  <!-- Main Mihrab Arch / Dome Silhouette -->
+  <path d="M 400,680 L 400,560 C 400,450 480,380 512,340 C 544,380 624,450 624,560 L 624,680 Z" fill="url(#creamGrad)"/>
+
+  <!-- Inner Arched Doorway Accent (Chestnut cut-out for architectural depth) -->
+  <path d="M 470,680 L 470,590 C 470,535 500,500 512,490 C 524,500 554,535 554,590 L 554,680 Z" fill="#6E3C0D"/>
+
+  <!-- Elegant Golden Crescent Moon embracing the dome -->
+  <path d="M 640,290 C 480,290 350,420 350,580 C 350,710 435,820 560,860 C 445,830 380,725 380,595 C 380,455 490,340 635,340 C 655,340 675,343 695,350 C 675,310 655,290 640,290 Z" fill="url(#goldGrad)"/>
+
+  <!-- Finial 8-Pointed Star atop the Dome Spire -->
+  <!-- Spire shaft -->
+  <rect x="509" y="300" width="6" height="42" fill="url(#goldGrad)" rx="3"/>
+  <!-- 8-point geometric star centered at (512, 275) -->
+  <polygon points="512,250 518,268 537,275 518,282 512,300 506,282 487,275 506,268" fill="url(#goldGrad)"/>
+  <polygon points="512,255 526,261 532,275 526,289 512,295 498,289 492,275 498,261" fill="#FFF8E1" opacity="0.6"/>
+
+  <!-- Horizontal Base Ground Foundation Accent -->
+  <rect x="360" y="675" width="304" height="12" rx="6" fill="url(#goldGrad)"/>
+</svg>

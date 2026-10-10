@@ -1,0 +1,6 @@
+{
+  "name": "Ad-Deen",
+  "description": "Authentic Islamic prayer companion with accurate prayer times, azkhar, prayer tracking & scoring, and reminders.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
