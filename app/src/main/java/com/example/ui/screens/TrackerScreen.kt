@@ -54,12 +54,12 @@ fun TrackerScreen(
 
     val displayDateFormat = remember {
         SimpleDateFormat("EEE, d MMM yyyy", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("Asia/Dhaka")
+            timeZone = TimeZone.getDefault()
         }
     }
     val parseFormat = remember {
         SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("Asia/Dhaka")
+            timeZone = TimeZone.getDefault()
         }
     }
 
@@ -291,7 +291,7 @@ fun TrackerScreen(
                             }
                             Text(
                                 text = if (record.perfect) (if (lang == "bn") "আলহামদুলিল্লাহ! সম্পূর্ণ আমল সম্পন্ন।" else "Alhamdulillah! Complete Perfect Day.")
-                                else (if (lang == "bn") "১০০ পয়েন্ট অর্জনে সব জামাত ও আযকার সম্পন্ন করুন" else "Earn 100 points: 5 Jamat + Nafl + Azkhar"),
+                                else (if (lang == "bn") "১০০ পয়েন্ট অর্জনে সব জামাত, নফল, কুরআন ও আযকার সম্পন্ন করুন" else "Earn 100 points: 5 Jamat + Nafl + Quran + Azkhar"),
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                                 color = com.example.ui.theme.AppColors.TextSecondary
                             )
@@ -443,7 +443,41 @@ fun TrackerScreen(
             }
         }
 
-        // 3. Azkhar Sections (+15 points: 3 pts each)
+        // 3. Quran reading (+5 points)
+        item {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = Strings.t("quran_section", lang),
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
+                ),
+                color = com.example.ui.theme.AppColors.Secondary
+            )
+        }
+
+        item {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
+                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    NaflCheckboxRow(
+                        title = Strings.t("quran_title", lang),
+                        desc = if (record.isQuranApplicable) Strings.t("quran_desc", lang) else Strings.t("quran_not_applicable", lang),
+                        checked = record.quran && record.isQuranApplicable,
+                        enabled = isEditable && record.isQuranApplicable,
+                        testTag = "checkbox_quran",
+                        onCheckedChange = { viewModel.toggleQuran() }
+                    )
+                }
+            }
+        }
+
+        // 4. Azkhar Sections (+10 points: 2 pts each)
         item {
             Spacer(Modifier.height(4.dp))
             Text(
@@ -466,7 +500,7 @@ fun TrackerScreen(
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SectionCheckboxRow(
-                        title = "${Strings.t("wake_azkhar", lang)} (+3)",
+                        title = "${Strings.t("wake_azkhar", lang)} (+2)",
                         checked = record.sections.wake,
                         enabled = isEditable,
                         testTag = "checkbox_wake",
@@ -474,7 +508,7 @@ fun TrackerScreen(
                     )
                     HorizontalDivider(color = com.example.ui.theme.AppColors.Divider)
                     SectionCheckboxRow(
-                        title = "${Strings.t("morning_azkhar", lang)} (+3)",
+                        title = "${Strings.t("morning_azkhar", lang)} (+2)",
                         checked = record.sections.morning,
                         enabled = isEditable,
                         testTag = "checkbox_morning",
@@ -482,7 +516,7 @@ fun TrackerScreen(
                     )
                     HorizontalDivider(color = com.example.ui.theme.AppColors.Divider)
                     SectionCheckboxRow(
-                        title = "${Strings.t("evening_azkhar", lang)} (+3)",
+                        title = "${Strings.t("evening_azkhar", lang)} (+2)",
                         checked = record.sections.evening,
                         enabled = isEditable,
                         testTag = "checkbox_evening",
@@ -490,7 +524,7 @@ fun TrackerScreen(
                     )
                     HorizontalDivider(color = com.example.ui.theme.AppColors.Divider)
                     SectionCheckboxRow(
-                        title = "${Strings.t("sleep_azkhar", lang)} (+3)",
+                        title = "${Strings.t("sleep_azkhar", lang)} (+2)",
                         checked = record.sections.sleep,
                         enabled = isEditable,
                         testTag = "checkbox_sleep",
@@ -498,7 +532,7 @@ fun TrackerScreen(
                     )
                     HorizontalDivider(color = com.example.ui.theme.AppColors.Divider)
                     SectionCheckboxRow(
-                        title = "${Strings.t("daily_zikr", lang)} (+3)",
+                        title = "${Strings.t("daily_zikr", lang)} (+2)",
                         checked = record.sections.zikr,
                         enabled = isEditable,
                         testTag = "checkbox_zikr",
@@ -747,7 +781,7 @@ private fun MonthlyCalendarCard(
     val dayMap = remember(allDays) { allDays.associateBy { it.date } }
 
     val cal = Calendar.getInstance().apply {
-        timeZone = TimeZone.getTimeZone("Asia/Dhaka")
+        timeZone = TimeZone.getDefault()
     }
 
     // Days in current month
@@ -860,20 +894,21 @@ private fun MonthlyCalendarCard(
 private fun ScoreTrendsCard(allDays: List<DayRecord>, lang: String) {
     val dayMap = remember(allDays) { allDays.associateBy { it.date } }
     val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("Asia/Dhaka")
+        timeZone = TimeZone.getDefault()
     }
 
     // Past 7 days
     val past7Dates = (6 downTo 0).map { offset ->
         val c = Calendar.getInstance().apply {
-            timeZone = TimeZone.getTimeZone("Asia/Dhaka")
+            timeZone = TimeZone.getDefault()
             add(Calendar.DAY_OF_YEAR, -offset)
         }
         val dateStr = dateFormat.format(c.time)
         val dayLabel = SimpleDateFormat("EEE", Locale.US).format(c.time)
-        val score = dayMap[dateStr]?.score ?: 0
-        Triple(dayLabel, score, dayMap[dateStr]?.perfect == true)
+        val rec = dayMap[dateStr]
+        TrendDay(dayLabel, rec?.score ?: 0, rec?.perfect == true, rec?.quran == true && rec.isQuranApplicable)
     }
+    val quranDays = past7Dates.count { it.quran }
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -896,11 +931,11 @@ private fun ScoreTrendsCard(allDays: List<DayRecord>, lang: String) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(120.dp),
+                    .height(138.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
-                past7Dates.forEach { (label, score, isPerfect) ->
+                past7Dates.forEach { (label, score, isPerfect, quranDone) ->
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.weight(1f)
@@ -932,6 +967,17 @@ private fun ScoreTrendsCard(allDays: List<DayRecord>, lang: String) {
                                 )
                         )
                         Spacer(Modifier.height(4.dp))
+                        // Quran marker: book icon when Quran was marked Done that day
+                        Box(modifier = Modifier.size(14.dp), contentAlignment = Alignment.Center) {
+                            if (quranDone) {
+                                Icon(
+                                    imageVector = Icons.Outlined.AutoStories,
+                                    contentDescription = Strings.t("quran_title", lang),
+                                    tint = com.example.ui.theme.AppColors.Secondary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = label,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
@@ -940,6 +986,22 @@ private fun ScoreTrendsCard(allDays: List<DayRecord>, lang: String) {
                     }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(
+                    imageVector = Icons.Outlined.AutoStories,
+                    contentDescription = null,
+                    tint = com.example.ui.theme.AppColors.Secondary,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    text = if (lang == "bn") "কুরআন তিলাওয়াত: গত ৭ দিনে $quranDays দিন" else "Quran read on $quranDays of the last 7 days",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp, fontFeatureSettings = "tnum"),
+                    color = com.example.ui.theme.AppColors.TextSecondary
+                )
+            }
         }
     }
 }
+
+private data class TrendDay(val label: String, val score: Int, val perfect: Boolean, val quran: Boolean)

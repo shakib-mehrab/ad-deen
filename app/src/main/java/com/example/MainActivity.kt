@@ -30,6 +30,7 @@ import com.example.ui.MainViewModel
 import com.example.ui.Strings
 import com.example.ui.screens.*
 import com.example.ui.theme.AdDinTheme
+import kotlinx.coroutines.flow.collectLatest
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,6 +101,22 @@ fun AdDinApp(viewModel: MainViewModel = viewModel()) {
     var azkharInitialTab by remember { mutableIntStateOf(0) }
     var showLoadingScreen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
 
+    // Undo snackbar (~5 s) for prayer / Witr / Tahajjud / Duha / Quran changes on Home and Tracker.
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(Unit) {
+        viewModel.undoEvents.collectLatest { event ->
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = kotlinx.coroutines.withTimeoutOrNull(5_000L) {
+                snackbarHostState.showSnackbar(
+                    message = event.message,
+                    actionLabel = if (viewModel.settings.value.language == "bn") "আনডু" else "Undo",
+                    duration = SnackbarDuration.Indefinite
+                )
+            }
+            if (result == SnackbarResult.ActionPerformed) viewModel.undo(event)
+        }
+    }
+
     LaunchedEffect(Unit) {
         // Ensure custom sounds folder exists on device filesystem
         com.example.alarm.SoundHelper.ensureCustomSoundFolders(context)
@@ -112,6 +129,17 @@ fun AdDinApp(viewModel: MainViewModel = viewModel()) {
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets.safeDrawing,
+            snackbarHost = {
+                SnackbarHost(snackbarHostState) { data ->
+                    Snackbar(
+                        snackbarData = data,
+                        containerColor = com.example.ui.theme.AppColors.TextPrimary,
+                        contentColor = com.example.ui.theme.AppColors.Surface,
+                        actionColor = com.example.ui.theme.AppColors.Primary,
+                        modifier = Modifier.testTag("undo_snackbar")
+                    )
+                }
+            },
             bottomBar = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     HorizontalDivider(

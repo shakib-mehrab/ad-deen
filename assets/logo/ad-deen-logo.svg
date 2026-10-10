@@ -1,47 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <defs>
-    <!-- Background Gradient: Rich Warm Chestnut to Deep Umber -->
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#9C5A1C"/>
-      <stop offset="100%" stop-color="#6E3C0D"/>
-    </linearGradient>
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Ad-Deen master logo (single source of truth).
+  Canvas is the Android adaptive-icon grid: 108 x 108 units.
+  Everything inside <g id="foreground"> stays within the 66-unit safe zone (circle r=33 around 54,54).
 
-    <!-- Golden Amber Gradient for Crescent and Finial -->
-    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FFC857"/>
-      <stop offset="100%" stop-color="#FFA000"/>
-    </linearGradient>
-
-    <!-- Warm Cream Gradient for Mosque Dome -->
-    <linearGradient id="creamGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#FFFFFF"/>
-      <stop offset="100%" stop-color="#FFF0CC"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Background Base -->
-  <rect width="1024" height="1024" fill="url(#bgGrad)"/>
-
-  <!-- Subtle Ambient Glow Behind Sacred Geometry -->
-  <circle cx="512" cy="512" r="320" fill="#FFA000" opacity="0.12"/>
-
-  <!-- Geometric Mosque Dome & Base (Centered, sitting gracefully inside crescent) -->
-  <!-- Main Mihrab Arch / Dome Silhouette -->
-  <path d="M 400,680 L 400,560 C 400,450 480,380 512,340 C 544,380 624,450 624,560 L 624,680 Z" fill="url(#creamGrad)"/>
-
-  <!-- Inner Arched Doorway Accent (Chestnut cut-out for architectural depth) -->
-  <path d="M 470,680 L 470,590 C 470,535 500,500 512,490 C 524,500 554,535 554,590 L 554,680 Z" fill="#6E3C0D"/>
-
-  <!-- Elegant Golden Crescent Moon embracing the dome -->
-  <path d="M 640,290 C 480,290 350,420 350,580 C 350,710 435,820 560,860 C 445,830 380,725 380,595 C 380,455 490,340 635,340 C 655,340 675,343 695,350 C 675,310 655,290 640,290 Z" fill="url(#goldGrad)"/>
-
-  <!-- Finial 8-Pointed Star atop the Dome Spire -->
-  <!-- Spire shaft -->
-  <rect x="509" y="300" width="6" height="42" fill="url(#goldGrad)" rx="3"/>
-  <!-- 8-point geometric star centered at (512, 275) -->
-  <polygon points="512,250 518,268 537,275 518,282 512,300 506,282 487,275 506,268" fill="url(#goldGrad)"/>
-  <polygon points="512,255 526,261 532,275 526,289 512,295 498,289 492,275 498,261" fill="#FFF8E1" opacity="0.6"/>
-
-  <!-- Horizontal Base Ground Foundation Accent -->
-  <rect x="360" y="675" width="304" height="12" rx="6" fill="url(#goldGrad)"/>
+  Rules so scripts/icons/generate-icons.mjs can convert it to Android vector drawables:
+    - Only <path> elements with absolute "d", a hex "fill" and optional fill-rule="evenodd".
+    - Keep the two layer groups: id="background" and id="foreground".
+  Colors: background #874D14 (brand brown), crescent #FFB030 (brand gold), mosque #FFF4D6 (cream).
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 108 108">
+  <g id="background">
+    <path d="M0,0 H108 V108 H0 Z" fill="#874D14"/>
+  </g>
+  <g id="foreground">
+    <!-- Crescent: outer circle (52,54 r27) minus inner circle (59,51 r23) -->
+    <path d="M59.29,28 A27,27 0 1,0 75.85,66.65 A23,23 0 1,1 59.29,28 Z" fill="#FFB030"/>
+    <!-- Mosque: onion dome + body, arched door cut out (even-odd) -->
+    <path fill-rule="evenodd" fill="#FFF4D6"
+          d="M47,67 L47,58 L50.5,58 C47.5,55 47.5,49.5 51,46 C54,43 58,40.5 59,36 C60,40.5 64,43 67,46 C70.5,49.5 70.5,55 67.5,58 L71,58 L71,67 Z M55.8,67 L55.8,62.2 C55.8,60.4 57.2,59 59,59 C60.8,59 62.2,60.4 62.2,62.2 L62.2,67 Z"/>
+    <!-- Finial -->
+    <path d="M59,31.4 C59.9,31.4 60.6,32.1 60.6,33 C60.6,33.9 59.9,34.6 59,34.6 C58.1,34.6 57.4,33.9 57.4,33 C57.4,32.1 58.1,31.4 59,31.4 Z" fill="#FFF4D6"/>
+  </g>
 </svg>

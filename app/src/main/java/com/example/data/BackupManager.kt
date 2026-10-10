@@ -21,7 +21,7 @@ import java.util.Locale
 
 object BackupManager {
 
-    private const val BACKUP_VERSION = 1
+    private const val BACKUP_VERSION = 2
 
     /**
      * Generates a complete JSON backup of the user's data (days, zikr, settings).
@@ -33,7 +33,7 @@ object BackupManager {
         val settings = db.userSettingsDao().getSettingsOnce()
 
         val root = JSONObject()
-        root.put("app", "Ad Din Islamic Worship Tracker")
+        root.put("app", "Ad-Deen")
         root.put("version", BACKUP_VERSION)
         root.put("exportedAt", System.currentTimeMillis())
         root.put("exportedDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()))
@@ -51,6 +51,8 @@ object BackupManager {
                 put("witr", day.witr)
                 put("tahajjud", day.tahajjud)
                 put("duha", day.duha)
+                put("quran", day.quran)
+                put("scoreVersion", day.scoreVersion)
                 put("wake", day.wake)
                 put("morning", day.morning)
                 put("evening", day.evening)
@@ -104,6 +106,8 @@ object BackupManager {
                 put("durudEnabled", settings.durudEnabled)
                 put("quietHoursStart", settings.quietHoursStart)
                 put("quietHoursEnd", settings.quietHoursEnd)
+                put("hijriOffset", settings.hijriOffset)
+                put("arabicFontSize", settings.arabicFontSize)
             }
             root.put("settings", sObj)
         }
@@ -172,8 +176,13 @@ object BackupManager {
             var restoredDaysCount = 0
             for (i in 0 until daysArray.length()) {
                 val d = daysArray.getJSONObject(i)
-                val entity = DayRecordEntity(
-                    date = d.getString("date"),
+                val date = d.getString("date")
+                // Skip malformed dates instead of importing garbage rows.
+                if (!Regex("""\d{4}-\d{2}-\d{2}""").matches(date)) continue
+                // v1 backups had no Quran/scoreVersion: those days pre-date Quran tracking.
+                val scoreVersion = d.optInt("scoreVersion", com.example.model.DayRecord.LEGACY_NO_QURAN_VERSION)
+                val raw = DayRecordEntity(
+                    date = date,
                     fajr = d.optString("fajr", "none"),
                     dhuhr = d.optString("dhuhr", "none"),
                     asr = d.optString("asr", "none"),
@@ -182,6 +191,8 @@ object BackupManager {
                     witr = d.optBoolean("witr", false),
                     tahajjud = d.optBoolean("tahajjud", false),
                     duha = d.optBoolean("duha", false),
+                    quran = d.optBoolean("quran", false),
+                    scoreVersion = scoreVersion,
                     wake = d.optBoolean("wake", false),
                     morning = d.optBoolean("morning", false),
                     evening = d.optBoolean("evening", false),
@@ -192,6 +203,8 @@ object BackupManager {
                     perfect = d.optBoolean("perfect", false),
                     updatedAt = d.optLong("updatedAt", System.currentTimeMillis())
                 )
+                // Recompute score/perfect from the restored fields so they always match the data.
+                val entity = with(Mappers) { raw.toModel().toEntity() }
                 db.dayRecordDao().insertOrUpdate(entity)
                 restoredDaysCount++
             }

@@ -31,7 +31,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,6 +58,7 @@ fun HomeScreen(
 ) {
     val settings by viewModel.settings.collectAsState()
     val schedule by viewModel.prayerSchedule.collectAsState()
+    val tomorrowSchedule by viewModel.tomorrowSchedule.collectAsState()
     val todayRecord by viewModel.todayRecord.collectAsState()
     val currentStreak by viewModel.currentStreak.collectAsState()
     val longestStreak by viewModel.longestStreak.collectAsState()
@@ -66,9 +70,10 @@ fun HomeScreen(
     val scrollState = rememberScrollState()
 
     // Find active prayer window or next upcoming window
-    val allWindows = schedule.allWindows()
+    // Today's windows followed by tomorrow's, so after Isha the next waqt is tomorrow's (never a past one).
+    val allWindows = schedule.allWindows() + tomorrowSchedule.allWindows()
     val activeWindow = allWindows.firstOrNull { liveTime in it.startTimeMillis until it.endTimeMillis }
-    val nextWindow = allWindows.firstOrNull { it.startTimeMillis > liveTime } ?: allWindows.firstOrNull()
+    val nextWindow = allWindows.firstOrNull { it.startTimeMillis > liveTime }
 
     val targetWindow = activeWindow ?: nextWindow
     val isWindowActive = activeWindow != null
@@ -145,45 +150,25 @@ fun HomeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(com.example.ui.theme.AppColors.Primary, CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    com.example.ui.components.UserAvatar(name = effectiveUserName, size = 44.dp)
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = (effectiveUserName.firstOrNull() ?: 'U').uppercase(),
+                            text = effectiveUserName,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = com.example.ui.theme.AppColors.OnPrimary
+                            color = com.example.ui.theme.AppColors.TextPrimary,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("authenticated_user_name_text")
                         )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = if (lang == "bn") "ব্যবহারকারী:" else "User:",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp
-                                ),
-                                color = com.example.ui.theme.AppColors.Secondary
-                            )
-                            Text(
-                                text = effectiveUserName,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = com.example.ui.theme.AppColors.TextPrimary,
-                                modifier = Modifier.testTag("authenticated_user_name_text")
-                            )
-                        }
                         Text(
                             text = if (currentUser?.isCloudConnected == true)
-                                (if (lang == "bn") "ক্লাউড সিঙ্ক চালু • ${currentUser?.email}" else "Cloud Connected • ${currentUser?.email}")
+                                (if (lang == "bn") "ক্লাউড সিঙ্ক চালু • ${currentUser?.email.orEmpty()}" else "Cloud sync on • ${currentUser?.email.orEmpty()}")
                             else
-                                (currentUser?.email ?: ""),
+                                currentUser?.email.orEmpty(),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                            color = com.example.ui.theme.AppColors.TextSecondary
+                            color = com.example.ui.theme.AppColors.TextSecondary,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -210,10 +195,12 @@ fun HomeScreen(
         }
 
         // Measured Forbidden Prayer Times Card
-        ForbiddenTimesCard(
+        com.example.ui.components.ForbiddenTimesCard(
             schedule = schedule,
             liveTime = liveTime,
             lang = lang,
+            showDescriptions = false,
+            testTag = "home_forbidden_times_card",
             onClick = onNavigateToPrayerTimes
         )
 
@@ -225,6 +212,13 @@ fun HomeScreen(
             longestStreak = longestStreak,
             lang = lang,
             onClick = onNavigateToTracker
+        )
+
+        // Daily Quran checklist item (today): tap toggles Done / Not done, with Undo snackbar.
+        QuranChecklistCard(
+            done = todayRecord.quran,
+            lang = lang,
+            onToggle = { viewModel.toggleQuran(onToday = true) }
         )
 
         // Quick Azkhar Navigation
@@ -354,7 +348,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun PrayerCountdownHeroCard(
+internal fun PrayerCountdownHeroCard(
     window: PrayerWindow,
     isActive: Boolean,
     remainingMillis: Long,
@@ -372,7 +366,7 @@ private fun PrayerCountdownHeroCard(
     val timeFormatted = String.format("%02d:%02d:%02d", hours, minutes, seconds)
 
     val timeFormat = SimpleDateFormat("hh:mm a", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("Asia/Dhaka")
+        timeZone = TimeZone.getDefault()
     }
     val windowStartStr = timeFormat.format(Date(window.startTimeMillis))
     val windowEndStr = timeFormat.format(Date(window.endTimeMillis))
@@ -429,12 +423,16 @@ private fun PrayerCountdownHeroCard(
                         )
                     }
 
+                    Spacer(Modifier.width(8.dp))
                     Surface(
                         color = com.example.ui.theme.AppColors.WarmTintContainer,
                         shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
+                        border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle),
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
                         Text(
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             text = "$windowStartStr - $windowEndStr",
                             style = MaterialTheme.typography.labelMedium.copy(
                                 fontWeight = FontWeight.Bold,
@@ -449,20 +447,27 @@ private fun PrayerCountdownHeroCard(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Bottom row: Prayer Title + Frosted Countdown Box
+                // Bottom row: waqt name (one line, ellipsis) + fixed-size countdown box.
+                // Fixed heights/widths keep the card the same size for every waqt name and language.
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = prayerTitle,
-                            style = MaterialTheme.typography.headlineLarge.copy(
+                            style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 32.sp
+                                fontSize = 24.sp,
+                                lineHeight = 30.sp
                             ),
-                            color = com.example.ui.theme.AppColors.TextPrimary
+                            color = com.example.ui.theme.AppColors.TextPrimary,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("hero_waqt_name")
                         )
                         Text(
                             text = if (isActive) (if (lang == "bn") "ওয়াক্ত শেষ হতে বাকি" else "Time Remaining") else (if (lang == "bn") "ওয়াক্ত শুরু হতে বাকি" else "Starts in"),
@@ -470,26 +475,39 @@ private fun PrayerCountdownHeroCard(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 12.sp
                             ),
-                            color = com.example.ui.theme.AppColors.Secondary
+                            color = com.example.ui.theme.AppColors.Secondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
-                    // Countdown box: #874D14 border/text on white (time in 32sp/700, tabular numerals)
+                    Spacer(Modifier.width(10.dp))
+
+                    // Countdown box: fixed size, monospaced tabular digits so its width never changes.
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = com.example.ui.theme.AppColors.Surface,
-                        border = BorderStroke(2.dp, com.example.ui.theme.AppColors.Secondary)
+                        border = BorderStroke(2.dp, com.example.ui.theme.AppColors.Secondary),
+                        modifier = Modifier
+                            .width(124.dp)
+                            .height(48.dp)
+                            .testTag("hero_countdown_box")
                     ) {
-                        Text(
-                            text = timeFormatted,
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 32.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            color = com.example.ui.theme.AppColors.Secondary,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = timeFormatted,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    // Sized in dp so the fixed box fits at any system font scale (e.g. 1.3x).
+                                    fontSize = with(LocalDensity.current) { 20.dp.toSp() },
+                                    fontFamily = FontFamily.Monospace,
+                                    fontFeatureSettings = "tnum"
+                                ),
+                                color = com.example.ui.theme.AppColors.Secondary,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
                 }
             }
@@ -829,176 +847,65 @@ private fun AzkharQuickCard(
 }
 
 @Composable
-private fun ForbiddenTimesCard(
-    schedule: DailyPrayerSchedule,
-    liveTime: Long,
-    lang: String,
-    onClick: () -> Unit
-) {
-    val activeForbidden = schedule.activeForbiddenTime(liveTime)
-    val isBn = lang == "bn"
-    val timeFormat = remember {
-        SimpleDateFormat("h:mm a", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("Asia/Dhaka")
-        }
-    }
-
+private fun QuranChecklistCard(done: Boolean, lang: String, onToggle: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .testTag("home_forbidden_times_card"),
+            .clickable(onClick = onToggle)
+            .testTag("home_quran_item"),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (activeForbidden != null) com.example.ui.theme.AppColors.WarmTintAlternate else com.example.ui.theme.AppColors.Surface
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (activeForbidden != null) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
-        ),
+        colors = CardDefaults.cardColors(containerColor = com.example.ui.theme.AppColors.Surface),
+        border = BorderStroke(1.dp, if (done) com.example.ui.theme.AppColors.Primary else com.example.ui.theme.AppColors.BorderSubtle),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (done) com.example.ui.theme.AppColors.Primary else com.example.ui.theme.AppColors.WarmTintContainer),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.DoNotDisturb,
-                        contentDescription = "Forbidden",
-                        tint = com.example.ui.theme.AppColors.Secondary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = if (isBn) "নামাজের নিষিদ্ধ সময়" else "Forbidden Prayer Times",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp
-                        ),
-                        color = com.example.ui.theme.AppColors.Secondary
-                    )
-                    Surface(
-                        color = com.example.ui.theme.AppColors.WarmTintContainer,
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
-                    ) {
-                        Text(
-                            text = if (isBn) "নিষিদ্ধ" else "Forbidden",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
-                            ),
-                            color = com.example.ui.theme.AppColors.Secondary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
-                if (activeForbidden != null) {
-                    Surface(
-                        color = com.example.ui.theme.AppColors.Secondary,
-                        shape = RoundedCornerShape(6.dp)
-                    ) {
-                        Text(
-                            text = if (isBn) "চলমান" else "ACTIVE NOW",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            ),
-                            color = com.example.ui.theme.AppColors.OnSecondary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-            }
-
-            if (activeForbidden != null) {
-                val remainingSecs = ((activeForbidden.endTimeMillis - liveTime) / 1000).coerceAtLeast(0)
-                val m = remainingSecs / 60
-                val s = remainingSecs % 60
-                Text(
-                    text = if (isBn) "সতর্কতা: ${activeForbidden.titleBn} চলছে (শেষ হতে বাকি ${String.format(Locale.US, "%02d:%02d", m, s)})"
-                    else "Warning: ${activeForbidden.titleEn} is active (Ends in ${String.format(Locale.US, "%02d:%02d", m, s)})",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
-                        fontFeatureSettings = "tnum"
-                    ),
-                    color = com.example.ui.theme.AppColors.Secondary
+                Icon(
+                    imageVector = if (done) Icons.Default.Check else Icons.Outlined.AutoStories,
+                    contentDescription = null,
+                    tint = if (done) com.example.ui.theme.AppColors.OnPrimary else com.example.ui.theme.AppColors.Secondary,
+                    modifier = Modifier.size(22.dp)
                 )
             }
-
-            // 3-Column Layout: Sunrise / Zawal / Sunset (name 14sp/600, time 12sp, tabular numerals, single-line)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = Strings.t("quran_title", lang),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, fontSize = 14.sp),
+                    color = com.example.ui.theme.AppColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = if (lang == "bn") "আজকের আমল • ট্যাপ করে পরিবর্তন করুন" else "Today's amal • tap to change",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                    color = com.example.ui.theme.AppColors.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Surface(
+                color = if (done) com.example.ui.theme.AppColors.Primary else com.example.ui.theme.AppColors.Surface,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.Secondary.copy(alpha = if (done) 1f else 0.4f))
             ) {
-                schedule.forbiddenTimes.forEach { fb ->
-                    val isCur = liveTime in fb.startTimeMillis until fb.endTimeMillis
-                    val sStr = timeFormat.format(Date(fb.startTimeMillis))
-                    val eStr = timeFormat.format(Date(fb.endTimeMillis))
-
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        color = if (isCur) com.example.ui.theme.AppColors.WarmTintAlternate else com.example.ui.theme.AppColors.WarmTintContainer,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isCur) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = if (isBn) {
-                                    when (fb.id) {
-                                        "sunrise_forbidden" -> "সূর্যোদয়"
-                                        "zawal_forbidden" -> "দ্বিপ্রহর"
-                                        else -> "সূর্যাস্ত"
-                                    }
-                                } else {
-                                    when (fb.id) {
-                                        "sunrise_forbidden" -> "Sunrise"
-                                        "zawal_forbidden" -> "Zawal"
-                                        else -> "Sunset"
-                                    }
-                                },
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                ),
-                                maxLines = 1,
-                                softWrap = false,
-                                color = com.example.ui.theme.AppColors.Secondary
-                            )
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                text = "$sStr - $eStr",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.sp,
-                                    fontFeatureSettings = "tnum"
-                                ),
-                                maxLines = 1,
-                                softWrap = false,
-                                textAlign = TextAlign.Center,
-                                color = com.example.ui.theme.AppColors.TextPrimary
-                            )
-                        }
-                    }
-                }
+                Text(
+                    text = Strings.t(if (done) "done" else "not_done", lang),
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                    color = if (done) com.example.ui.theme.AppColors.OnPrimary else com.example.ui.theme.AppColors.TextSecondary,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
             }
         }
     }
 }
-

@@ -11,27 +11,46 @@ import com.example.model.*
 import com.example.prayer.PrayerCalculator
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
-import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
 
+/** One undoable tracker change: the full day record before the change. */
+data class UndoEvent(val id: Long, val message: String, val before: DayRecord)
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = AppRepository(application)
+    private val repository = AppRepository.getInstance(application)
     private val fusedLocationClient = LocationServices.getFusedLocationProviderClient(application)
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("Asia/Dhaka")
-    }
+    /** All dates/times use the device time zone, the same one the alarms use. */
+    private fun dateFormat() = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { timeZone = TimeZone.getDefault() }
 
     val todayDateString: String
-        get() = dateFormat.format(Date())
+        get() = dateFormat().format(Date())
 
+    // Live clock ticker (1 s) drives countdowns; today's date is derived from it so it rolls over at midnight.
+    val liveTimeMillis = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(1000)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), System.currentTimeMillis())
+
+    val todayDate: StateFlow<String> = flow {
+        while (true) {
+            emit(dateFormat().format(Date()))
+            delay(30_000)
+        }
+    }.distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, todayDateString)
+
+    /** Date shown in the Tracker. Today or the past only. */
     val selectedDate = MutableStateFlow(todayDateString)
 
     val settings: StateFlow<UserSettings> = repository.getSettings()
@@ -51,65 +70,65 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val wakeAzkhar: List<AzkharItem> by lazy { AssetLoader.loadAzkhar(application, "azkhar_wake.json") }
     val asmaulHusna: List<AllahName> by lazy { AssetLoader.loadAsmaulHusna(application) }
 
-    // Selected day record
-    val selectedDayRecord: StateFlow<DayRecord> = selectedDate.flatMapLatest { date ->
-        repository.getDay(date)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, DayRecord(date = todayDateString))
-
-    // Today record
-    val todayRecord: StateFlow<DayRecord> = repository.getDay(todayDateString)
+    val selectedDayRecord: StateFlow<DayRecord> = selectedDate.flatMapLatest { repository.getDay(it) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, DayRecord(date = todayDateString))
 
-    // Real-time prayer schedule
-    val prayerSchedule: StateFlow<DailyPrayerSchedule> = combine(
-        selectedDate,
-        settings
-    ) { dateStr, userSettings ->
-        val cal = Calendar.getInstance(TimeZone.getTimeZone("Asia/Dhaka"))
-        val date = runCatching { dateFormat.parse(dateStr) }.getOrNull()
-        if (date != null) {
-            cal.time = date
-        }
-        val method = CalculationMethod.fromId(userSettings.calcMethod)
-        PrayerCalculator.calculateSchedule(cal, userSettings.lat, userSettings.lng, method, cal.timeZone)
-    }.stateIn(
-        viewModelScope,
-        SharingStarted.Eagerly,
-        PrayerCalculator.calculateSchedule(
-            Calendar.getInstance(TimeZone.getTimeZone("Asia/Dhaka")),
-            23.8103,
-            90.4125,
-            CalculationMethod.IFB
-        )
-    )
+    /** Always today's record (Home, Azkhar), follows the date across midnight. */
+    val todayRecord: StateFlow<DayRecord> = todayDate.flatMapLatest { repository.getDay(it) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, DayRecord(date = todayDateString))
 
-    // Current & Longest Perfect Day Streaks
-    val currentStreak: StateFlow<Int> = allDays.map { days ->
-        calculateCurrentStreak(days)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    private fun scheduleFor(dateStr: String, s: UserSettings): DailyPrayerSchedule {
+        val tz = TimeZone.getDefault()
+        val cal = Calendar.getInstance(tz)
+        runCatching { dateFormat().parse(dateStr) }.getOrNull()?.let { cal.time = it }
+        cal.set(Calendar.HOUR_OF_DAY, 12)
+        return PrayerCalculator.calculateSchedule(cal, s.lat, s.lng, CalculationMethod.fromId(s.calcMethod), tz)
+    }
 
-    val longestStreak: StateFlow<Int> = allDays.map { days ->
-        calculateLongestStreak(days)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    private fun nextDate(dateStr: String): String {
+        val cal = Calendar.getInstance(TimeZone.getDefault())
+        runCatching { dateFormat().parse(dateStr) }.getOrNull()?.let { cal.time = it }
+        cal.add(Calendar.DAY_OF_MONTH, 1)
+        return dateFormat().format(cal.time)
+    }
+
+    /** Today's prayer schedule (Home + Wakt screen), same engine/location/time zone as the alarms. */
+    val prayerSchedule: StateFlow<DailyPrayerSchedule> = combine(todayDate, settings) { d, s -> scheduleFor(d, s) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, scheduleFor(todayDateString, UserSettings()))
+
+    /** Tomorrow's schedule, so after Isha the "next waqt" countdown targets tomorrow, not a past window. */
+    val tomorrowSchedule: StateFlow<DailyPrayerSchedule> = combine(todayDate, settings) { d, s -> scheduleFor(nextDate(d), s) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, scheduleFor(nextDate(todayDateString), UserSettings()))
+
+    val currentStreak: StateFlow<Int> = combine(allDays, todayDate) { days, today -> calculateCurrentStreak(days, today) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    val longestStreak: StateFlow<Int> = allDays.map { calculateLongestStreak(it) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     val currentUserAccount: StateFlow<com.example.data.AppUser?> = repository.currentUserAccount
     val isFirebaseInitialized: StateFlow<Boolean> = repository.isFirebaseInitialized
     val firebaseStatus: StateFlow<String> = repository.firebaseStatus
+    val syncError: StateFlow<String?> = repository.syncError
     val lastSyncTime: StateFlow<Long> = repository.lastSyncTime
 
-    // Live clock ticker
-    val liveTimeMillis = flow {
-        while (true) {
-            emit(System.currentTimeMillis())
-            delay(1000)
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), System.currentTimeMillis())
+    private val _undoEvents = MutableSharedFlow<UndoEvent>(extraBufferCapacity = 4)
+    val undoEvents: SharedFlow<UndoEvent> = _undoEvents.asSharedFlow()
 
     init {
-        // Reschedule alarms whenever settings change
+        // Reschedule alarms from the stored settings whenever they change (incl. app open).
+        // Collect Room directly (not the UI StateFlow) so default values are never scheduled.
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.getSettings().distinctUntilChanged().collectLatest { s ->
+                AlarmScheduler.scheduleAll(getApplication(), s)
+            }
+        }
+        // Keep the tracker on "today" when the day rolls over while it is showing yesterday-as-today.
         viewModelScope.launch {
-            settings.collectLatest { s ->
-                AlarmScheduler.scheduleNext7Days(getApplication(), s)
+            var previousToday = todayDate.value
+            todayDate.collect { today ->
+                if (selectedDate.value == previousToday) selectedDate.value = today
+                previousToday = today
             }
         }
     }
@@ -117,102 +136,137 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // ----------------- DATE NAVIGATION -----------------
 
     fun selectDate(date: String) {
-        // Enforce: Future dates cannot be navigated to for tracking
-        if (date <= todayDateString) {
-            selectedDate.value = date
-        }
+        if (date <= todayDateString) selectedDate.value = date
     }
 
     fun stepDate(daysOffset: Int) {
-        val cur = runCatching { dateFormat.parse(selectedDate.value) }.getOrNull() ?: Date()
-        val cal = Calendar.getInstance().apply {
-            time = cur
-            add(Calendar.DAY_OF_MONTH, daysOffset)
-        }
-        val target = dateFormat.format(cal.time)
-        if (target <= todayDateString) {
-            selectedDate.value = target
-        }
+        val cal = Calendar.getInstance(TimeZone.getDefault())
+        runCatching { dateFormat().parse(selectedDate.value) }.getOrNull()?.let { cal.time = it }
+        cal.add(Calendar.DAY_OF_MONTH, daysOffset)
+        val target = dateFormat().format(cal.time)
+        if (target <= todayDateString) selectedDate.value = target
     }
 
     fun isDateToday(): Boolean = selectedDate.value == todayDateString
 
     // ----------------- TRACKER MUTATIONS -----------------
 
-    fun updatePrayerStatus(prayerKey: String, status: PrayerStatus) {
-        val current = selectedDayRecord.value
-        val prayers = when (prayerKey.lowercase()) {
-            "fajr" -> current.prayers.copy(fajr = status)
-            "dhuhr" -> current.prayers.copy(dhuhr = status)
-            "asr" -> current.prayers.copy(asr = status)
-            "maghrib" -> current.prayers.copy(maghrib = status)
-            "isha" -> current.prayers.copy(isha = status)
-            else -> current.prayers
+    private fun isBn() = settings.value.language == "bn"
+
+    /** Applies a change to [date] (default: Tracker's date). Future dates are locked. Emits an Undo event when [undoMessage] is set. */
+    private fun mutateDay(date: String = selectedDate.value, undoMessage: String? = null, transform: (DayRecord) -> DayRecord) {
+        if (date > todayDateString) return
+        viewModelScope.launch {
+            val (before, after) = repository.updateDay(date, transform)
+            val changed = before.prayers != after.prayers || before.nafl != after.nafl ||
+                before.quran != after.quran || before.sections != after.sections || before.counters != after.counters
+            if (undoMessage != null && changed) {
+                _undoEvents.emit(UndoEvent(System.nanoTime(), undoMessage, before))
+            }
         }
-        saveDay(current.copy(prayers = prayers))
+    }
+
+    /** Restores the day exactly as it was before the last change; score/streak/charts recompute and it syncs. */
+    fun undo(event: UndoEvent) {
+        viewModelScope.launch { repository.updateDay(event.before.date) { event.before } }
+    }
+
+    private fun prayerLabel(key: String): String {
+        val p = PrayerName.entries.firstOrNull { it.id == key.lowercase() }
+        return if (isBn()) p?.titleBn ?: key else p?.titleEn ?: key
+    }
+
+    /** Tapping the already-selected status clears it back to "Not marked". */
+    fun updatePrayerStatus(prayerKey: String, status: PrayerStatus) {
+        val newStatus = selectedDayRecord.value.prayers.withToggled(prayerKey, status).statusOf(prayerKey) ?: return
+        val label = prayerLabel(prayerKey)
+        val msg = if (newStatus == PrayerStatus.NONE) {
+            if (isBn()) "$label: চিহ্ন মুছে ফেলা হয়েছে" else "$label cleared"
+        } else {
+            val short = when (newStatus) {
+                PrayerStatus.JAMAT -> if (isBn()) "জামাত" else "Jamat"
+                PrayerStatus.ALONE -> if (isBn()) "একাকী" else "Alone"
+                PrayerStatus.QAZA -> if (isBn()) "ক্বাযা" else "Qaza"
+                else -> if (isBn()) "মিস" else "Missed"
+            }
+            "$label: $short"
+        }
+        // Applied to the freshest stored value so rapid double taps behave predictably.
+        mutateDay(undoMessage = msg) { d -> d.copy(prayers = d.prayers.withToggled(prayerKey, status)) }
     }
 
     fun toggleNafl(type: String) {
-        val current = selectedDayRecord.value
-        val nafl = when (type.lowercase()) {
-            "witr" -> current.nafl.copy(witr = !current.nafl.witr)
-            "tahajjud" -> current.nafl.copy(tahajjud = !current.nafl.tahajjud)
-            "duha" -> current.nafl.copy(duha = !current.nafl.duha)
-            else -> current.nafl
+        val cur = selectedDayRecord.value.nafl
+        val (label, nowOn) = when (type.lowercase()) {
+            "witr" -> (if (isBn()) "বিতর" else "Witr") to !cur.witr
+            "tahajjud" -> (if (isBn()) "তাহাজ্জুদ" else "Tahajjud") to !cur.tahajjud
+            "duha" -> (if (isBn()) "দুহা" else "Duha") to !cur.duha
+            else -> return
         }
-        saveDay(current.copy(nafl = nafl))
+        mutateDay(undoMessage = doneMessage(label, nowOn)) { d ->
+            d.copy(
+                nafl = when (type.lowercase()) {
+                    "witr" -> d.nafl.copy(witr = !d.nafl.witr)
+                    "tahajjud" -> d.nafl.copy(tahajjud = !d.nafl.tahajjud)
+                    else -> d.nafl.copy(duha = !d.nafl.duha)
+                }
+            )
+        }
     }
+
+    /** Quran Done / Not done. [onToday] = true for the Home checklist, false for the Tracker's selected date. */
+    fun toggleQuran(onToday: Boolean = false) {
+        val date = if (onToday) todayDateString else selectedDate.value
+        val record = if (onToday) todayRecord.value else selectedDayRecord.value
+        if (!record.isQuranApplicable) return
+        mutateDay(date = date, undoMessage = doneMessage(if (isBn()) "কুরআন তিলাওয়াত" else "Quran", !record.quran)) { d ->
+            if (d.isQuranApplicable) d.copy(quran = !d.quran) else d
+        }
+    }
+
+    private fun doneMessage(label: String, nowOn: Boolean) =
+        if (isBn()) "$label: ${if (nowOn) "সম্পন্ন" else "সম্পন্ন নয়"}" else "$label: ${if (nowOn) "Done" else "Not done"}"
 
     fun toggleSection(sectionKey: String) {
-        val current = selectedDayRecord.value
-        val sections = when (sectionKey.lowercase()) {
-            "wake" -> current.sections.copy(wake = !current.sections.wake)
-            "morning" -> current.sections.copy(morning = !current.sections.morning)
-            "evening" -> current.sections.copy(evening = !current.sections.evening)
-            "sleep" -> current.sections.copy(sleep = !current.sections.sleep)
-            "zikr" -> current.sections.copy(zikr = !current.sections.zikr)
-            else -> current.sections
+        mutateDay { d ->
+            d.copy(
+                sections = when (sectionKey.lowercase()) {
+                    "wake" -> d.sections.copy(wake = !d.sections.wake)
+                    "morning" -> d.sections.copy(morning = !d.sections.morning)
+                    "evening" -> d.sections.copy(evening = !d.sections.evening)
+                    "sleep" -> d.sections.copy(sleep = !d.sections.sleep)
+                    "zikr" -> d.sections.copy(zikr = !d.sections.zikr)
+                    else -> d.sections
+                }
+            )
         }
-        saveDay(current.copy(sections = sections))
     }
 
+    // Azkhar counters always apply to today's record (the Azkhar screen shows today).
     fun incrementCounter(section: String, itemId: String, target: Int) {
-        val current = selectedDayRecord.value
-        val key = "$section:$itemId"
-        val currentCount = current.counters[key] ?: 0
-        if (currentCount >= target) return
-
-        val newCount = currentCount + 1
-        val newCounters = current.counters.toMutableMap().apply { put(key, newCount) }
-
-        // Check if all items in the section are now complete
-        val isSectionCompleted = checkSectionCompletion(section, newCounters)
-        val sections = when (section.lowercase()) {
-            "wake" -> current.sections.copy(wake = isSectionCompleted)
-            "morning" -> current.sections.copy(morning = isSectionCompleted)
-            "evening" -> current.sections.copy(evening = isSectionCompleted)
-            "sleep" -> current.sections.copy(sleep = isSectionCompleted)
-            "zikr" -> current.sections.copy(zikr = isSectionCompleted)
-            else -> current.sections
+        mutateDay(date = todayDateString) { d ->
+            val key = "$section:$itemId"
+            val count = d.counters[key] ?: 0
+            if (count >= target) return@mutateDay d
+            val counters = d.counters + (key to count + 1)
+            d.copy(counters = counters, sections = withSection(d.sections, section, checkSectionCompletion(section, counters)))
         }
-
-        saveDay(current.copy(counters = newCounters, sections = sections))
     }
 
     fun resetCounter(section: String, itemId: String) {
-        val current = selectedDayRecord.value
-        val key = "$section:$itemId"
-        val newCounters = current.counters.toMutableMap().apply { remove(key) }
-        val isSectionCompleted = checkSectionCompletion(section, newCounters)
-        val sections = when (section.lowercase()) {
-            "wake" -> current.sections.copy(wake = isSectionCompleted)
-            "morning" -> current.sections.copy(morning = isSectionCompleted)
-            "evening" -> current.sections.copy(evening = isSectionCompleted)
-            "sleep" -> current.sections.copy(sleep = isSectionCompleted)
-            "zikr" -> current.sections.copy(zikr = isSectionCompleted)
-            else -> current.sections
+        mutateDay(date = todayDateString) { d ->
+            val counters = d.counters - "$section:$itemId"
+            d.copy(counters = counters, sections = withSection(d.sections, section, checkSectionCompletion(section, counters)))
         }
-        saveDay(current.copy(counters = newCounters, sections = sections))
+    }
+
+    private fun withSection(s: DaySections, section: String, done: Boolean) = when (section.lowercase()) {
+        "wake" -> s.copy(wake = done)
+        "morning" -> s.copy(morning = done)
+        "evening" -> s.copy(evening = done)
+        "sleep" -> s.copy(sleep = done)
+        "zikr" -> s.copy(zikr = done)
+        else -> s
     }
 
     private fun checkSectionCompletion(section: String, counters: Map<String, Int>): Boolean {
@@ -225,16 +279,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else -> emptyList()
         }
         if (items.isEmpty()) return false
-        return items.all { (id, target) ->
-            val count = counters["$section:$id"] ?: 0
-            count >= target
-        }
-    }
-
-    private fun saveDay(day: DayRecord) {
-        viewModelScope.launch {
-            repository.saveDay(day)
-        }
+        return items.all { (id, target) -> (counters["$section:$id"] ?: 0) >= target }
     }
 
     // ----------------- CUSTOM ZIKR -----------------
@@ -248,93 +293,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateCustomZikr(item: ZikrItem) {
-        viewModelScope.launch {
-            repository.saveZikrItem(item)
-        }
+        viewModelScope.launch { repository.saveZikrItem(item) }
     }
 
     fun deleteCustomZikr(id: String) {
-        viewModelScope.launch {
-            repository.deleteZikrItem(id)
-        }
+        viewModelScope.launch { repository.deleteZikrItem(id) }
     }
 
     // ----------------- SETTINGS MUTATIONS -----------------
+    // Every mutation transforms the latest STORED settings, so two quick toggles never overwrite each other.
 
-    fun updateLanguage(lang: String) {
-        val cur = settings.value
-        saveSettings(cur.copy(language = lang))
+    private fun updateSettings(transform: (UserSettings) -> UserSettings) {
+        viewModelScope.launch { repository.updateSettings(transform) }
     }
 
-    fun updateCalculationMethod(method: String) {
-        val cur = settings.value
-        saveSettings(cur.copy(calcMethod = method))
+    fun updateLanguage(lang: String) = updateSettings { it.copy(language = lang) }
+
+    fun updateCalculationMethod(method: String) = updateSettings { it.copy(calcMethod = method) }
+
+    fun selectDistrict(district: District) = updateSettings {
+        it.copy(locationMode = "district", district = district.nameEn, lat = district.lat, lng = district.lng)
     }
 
-    fun selectDistrict(district: District) {
-        val cur = settings.value
-        saveSettings(
-            cur.copy(
-                locationMode = "district",
-                district = district.nameEn,
-                lat = district.lat,
-                lng = district.lng
-            )
-        )
-    }
+    /** Turning a toggle off cancels every scheduled alarm of that waqt/type (via the settings-change reschedule). */
+    fun toggleAlarm(key: String, enabled: Boolean) = updateSettings { it.copy(alarmToggles = it.alarmToggles + (key to enabled)) }
 
-    fun toggleAlarm(key: String, enabled: Boolean) {
-        val cur = settings.value
-        val toggles = cur.alarmToggles.toMutableMap().apply { put(key, enabled) }
-        saveSettings(cur.copy(alarmToggles = toggles))
-    }
+    fun updateIstigfarConfig(config: IstigfarDurudConfig) = updateSettings { it.copy(istigfar = config) }
 
-    fun updateIstigfarConfig(config: IstigfarDurudConfig) {
-        val cur = settings.value
-        saveSettings(cur.copy(istigfar = config))
-    }
+    fun updateDurudConfig(config: IstigfarDurudConfig) = updateSettings { it.copy(durud = config) }
 
-    fun updateDurudConfig(config: IstigfarDurudConfig) {
-        val cur = settings.value
-        saveSettings(cur.copy(durud = config))
-    }
+    fun updateQuietHours(start: String, end: String) = updateSettings { it.copy(quietHoursStart = start, quietHoursEnd = end) }
 
-    fun updateQuietHours(start: String, end: String) {
-        val cur = settings.value
-        saveSettings(cur.copy(quietHoursStart = start, quietHoursEnd = end))
-    }
-
-    fun updateReminders(morning: Boolean, evening: Boolean) {
-        val cur = settings.value
-        saveSettings(cur.copy(morningReminder = morning, eveningReminder = evening))
-    }
+    fun updateReminders(morning: Boolean, evening: Boolean) = updateSettings { it.copy(morningReminder = morning, eveningReminder = evening) }
 
     fun saveSettings(newSettings: UserSettings) {
-        viewModelScope.launch {
-            repository.saveSettings(newSettings)
+        viewModelScope.launch { repository.saveSettings(newSettings) }
+    }
+
+    fun updateArabicFontSize(size: Int) = updateSettings { it.copy(arabicFontSize = size.coerceIn(18, 44)) }
+
+    fun updateHijriOffset(offset: Int) = updateSettings { it.copy(hijriOffset = offset.coerceIn(-2, 2)) }
+
+    fun registerCustomSound(soundKey: String, displayName: String) =
+        updateSettings { it.copy(customSoundNames = it.customSoundNames + (soundKey to displayName)) }
+
+    fun unregisterCustomSound(soundKey: String) =
+        updateSettings { it.copy(customSoundNames = it.customSoundNames - soundKey) }
+
+    /** Posts an Istigfar or Durud reminder immediately (ignores quiet hours) so the user can check sound and text. */
+    fun sendTestReminder(isIstigfar: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            com.example.receiver.AlarmReceiver.deliverReminder(getApplication(), isIstigfar, respectQuietHours = false)
         }
-    }
-
-    fun updateArabicFontSize(size: Int) {
-        val clamped = size.coerceIn(18, 44)
-        saveSettings(settings.value.copy(arabicFontSize = clamped))
-    }
-
-    fun updateHijriOffset(offset: Int) {
-        val clamped = offset.coerceIn(-2, 2)
-        saveSettings(settings.value.copy(hijriOffset = clamped))
-    }
-
-    fun registerCustomSound(soundKey: String, displayName: String) {
-        val updated = settings.value.customSoundNames.toMutableMap()
-        updated[soundKey] = displayName
-        saveSettings(settings.value.copy(customSoundNames = updated))
-    }
-
-    fun unregisterCustomSound(soundKey: String) {
-        val updated = settings.value.customSoundNames.toMutableMap()
-        updated.remove(soundKey)
-        saveSettings(settings.value.copy(customSoundNames = updated))
     }
 
     fun requestGpsLocation(onResult: (Boolean) -> Unit) {
@@ -345,14 +355,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         applyGpsLocation(loc)
                         onResult(true)
                     } else {
-                        // Fallback to last known location
                         fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc: Location? ->
                             if (lastLoc != null) {
                                 applyGpsLocation(lastLoc)
                                 onResult(true)
-                            } else {
-                                onResult(false)
-                            }
+                            } else onResult(false)
                         }.addOnFailureListener { onResult(false) }
                     }
                 }.addOnFailureListener {
@@ -360,9 +367,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (lastLoc != null) {
                             applyGpsLocation(lastLoc)
                             onResult(true)
-                        } else {
-                            onResult(false)
-                        }
+                        } else onResult(false)
                     }.addOnFailureListener { onResult(false) }
                 }
         } catch (e: SecurityException) {
@@ -371,7 +376,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun applyGpsLocation(loc: Location) {
-        val cur = settings.value
         val nearest = districts.minByOrNull { d ->
             val dLat = d.lat - loc.latitude
             val dLng = d.lng - loc.longitude
@@ -380,19 +384,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val isWithinBangladesh = loc.latitude in 20.0..27.0 && loc.longitude in 88.0..93.0
         val effectiveLat = if (isWithinBangladesh) loc.latitude else (nearest?.lat ?: 23.8103)
         val effectiveLng = if (isWithinBangladesh) loc.longitude else (nearest?.lng ?: 90.4125)
-        val districtLabel = if (nearest != null) {
-            "${nearest.nameEn} (GPS)"
-        } else {
-            "GPS (${String.format(Locale.US, "%.2f, %.2f", effectiveLat, effectiveLng)})"
-        }
-        saveSettings(
-            cur.copy(
-                locationMode = "gps",
-                lat = effectiveLat,
-                lng = effectiveLng,
-                district = districtLabel
-            )
-        )
+        val districtLabel = if (nearest != null) "${nearest.nameEn} (GPS)"
+        else "GPS (${String.format(Locale.US, "%.2f, %.2f", effectiveLat, effectiveLng)})"
+        updateSettings { it.copy(locationMode = "gps", lat = effectiveLat, lng = effectiveLng, district = districtLabel) }
     }
 
     // ----------------- AUTH & ACCOUNT -----------------
@@ -400,48 +394,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun signInWithEmail(email: String, pass: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             val result = repository.signInWithEmail(email, pass)
-            if (result.isSuccess) {
-                onResult(true, null)
-            } else {
-                onResult(false, result.exceptionOrNull()?.message ?: "Sign in failed")
-            }
+            onResult(result.isSuccess, result.exceptionOrNull()?.message)
         }
     }
 
     fun registerWithEmail(email: String, pass: String, displayName: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             val result = repository.registerWithEmail(email, pass, displayName)
-            if (result.isSuccess) {
-                onResult(true, null)
-            } else {
-                onResult(false, result.exceptionOrNull()?.message ?: "Registration failed")
-            }
+            onResult(result.isSuccess, result.exceptionOrNull()?.message)
         }
     }
 
     fun updateUserName(newName: String, onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             val res = repository.updateUserName(newName)
-            if (res.isSuccess) {
-                onResult(true, null)
-            } else {
-                onResult(false, res.exceptionOrNull()?.message)
-            }
+            onResult(res.isSuccess, res.exceptionOrNull()?.message)
         }
     }
 
-    fun signOut() {
-        repository.signOut()
-    }
+    fun signOut() = repository.signOut()
 
     fun deleteAccount(onResult: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             val res = repository.deleteUserAccount()
-            if (res.isSuccess) {
-                onResult(true, null)
-            } else {
-                onResult(false, res.exceptionOrNull()?.message)
-            }
+            onResult(res.isSuccess, res.exceptionOrNull()?.message)
         }
     }
 
@@ -450,11 +426,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun syncAllToCloud(onResult: (Boolean, Int, String?) -> Unit) {
         viewModelScope.launch {
             val result = repository.syncAllToCloud()
-            if (result.isSuccess) {
-                onResult(true, result.getOrDefault(0), null)
-            } else {
-                onResult(false, 0, result.exceptionOrNull()?.message)
-            }
+            onResult(result.isSuccess, result.getOrDefault(0), result.exceptionOrNull()?.message)
         }
     }
 
@@ -469,8 +441,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val json = com.example.data.BackupManager.createBackupJson(getApplication())
-                val file = com.example.data.BackupManager.saveBackupToCache(getApplication(), json)
-                onResult(file)
+                onResult(com.example.data.BackupManager.saveBackupToCache(getApplication(), json))
             } catch (e: Exception) {
                 onResult(null)
             }
@@ -493,6 +464,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val res = com.example.data.BackupManager.restoreBackupFromUri(getApplication(), uri)
             if (res.isSuccess) {
+                // Push restored data to the cloud too when signed in.
+                if (currentUserAccount.value != null) repository.syncAllToCloud()
                 onResult(true, res.getOrDefault(0), null)
             } else {
                 onResult(false, 0, res.exceptionOrNull()?.message)
@@ -500,73 +473,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // ----------------- STREAKS CALCULATION -----------------
+    // ----------------- STREAKS -----------------
 
-    private fun calculateCurrentStreak(days: List<DayRecord>): Int {
-        if (days.isEmpty()) return 0
-        val dayMap = days.associateBy { it.date }
-
-        val cal = Calendar.getInstance().apply {
-            timeZone = TimeZone.getTimeZone("Asia/Dhaka")
-        }
-
+    private fun calculateCurrentStreak(days: List<DayRecord>, today: String): Int {
+        val perfect = days.filter { it.perfect }.map { it.date }.toHashSet()
+        if (perfect.isEmpty()) return 0
+        val fmt = dateFormat()
+        val cal = Calendar.getInstance(TimeZone.getDefault())
+        runCatching { fmt.parse(today) }.getOrNull()?.let { cal.time = it }
+        // Today not finished yet doesn't break the streak; start from yesterday in that case.
+        if (fmt.format(cal.time) !in perfect) cal.add(Calendar.DAY_OF_MONTH, -1)
         var streak = 0
-        // Check today first. If today is not perfect yet, check starting from yesterday
-        val todayStr = dateFormat.format(cal.time)
-        val todayRecord = dayMap[todayStr]
-
-        if (todayRecord?.perfect == true) {
+        while (fmt.format(cal.time) in perfect) {
             streak++
             cal.add(Calendar.DAY_OF_MONTH, -1)
-        } else {
-            // Check yesterday
-            cal.add(Calendar.DAY_OF_MONTH, -1)
-            val yRecord = dayMap[dateFormat.format(cal.time)]
-            if (yRecord?.perfect != true) {
-                return 0
-            }
-        }
-
-        while (true) {
-            val dStr = dateFormat.format(cal.time)
-            val r = dayMap[dStr]
-            if (r?.perfect == true) {
-                if (dStr != todayStr) streak++
-                cal.add(Calendar.DAY_OF_MONTH, -1)
-            } else {
-                break
-            }
         }
         return streak
     }
 
     private fun calculateLongestStreak(days: List<DayRecord>): Int {
-        if (days.isEmpty()) return 0
         val perfectDates = days.filter { it.perfect }.map { it.date }.sorted()
         if (perfectDates.isEmpty()) return 0
-
+        val fmt = dateFormat()
+        val cal = Calendar.getInstance(TimeZone.getDefault())
         var maxStreak = 1
         var curStreak = 1
-
-        val cal = Calendar.getInstance().apply {
-            timeZone = TimeZone.getTimeZone("Asia/Dhaka")
-        }
-
         for (i in 0 until perfectDates.size - 1) {
-            val d1 = runCatching { dateFormat.parse(perfectDates[i]) }.getOrNull()
-            val d2 = runCatching { dateFormat.parse(perfectDates[i + 1]) }.getOrNull()
-            if (d1 != null && d2 != null) {
-                cal.time = d1
-                cal.add(Calendar.DAY_OF_MONTH, 1)
-                val expectedNext = dateFormat.format(cal.time)
-                if (expectedNext == perfectDates[i + 1]) {
-                    curStreak++
-                    if (curStreak > maxStreak) {
-                        maxStreak = curStreak
-                    }
-                } else {
-                    curStreak = 1
-                }
+            val d1 = runCatching { fmt.parse(perfectDates[i]) }.getOrNull() ?: continue
+            cal.time = d1
+            cal.add(Calendar.DAY_OF_MONTH, 1)
+            if (fmt.format(cal.time) == perfectDates[i + 1]) {
+                curStreak++
+                maxStreak = maxOf(maxStreak, curStreak)
+            } else {
+                curStreak = 1
             }
         }
         return maxStreak

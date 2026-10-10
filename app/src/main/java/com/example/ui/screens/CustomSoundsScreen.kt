@@ -90,6 +90,13 @@ fun CustomSoundsAndLogoSubScreen(
             descEn = "Plays when periodic Darud reminders trigger"
         ),
         SoundConfigItem(
+            soundKey = SoundHelper.SOUND_TAHAJJUD,
+            titleBn = "তাহাজ্জুদ অ্যালার্ম টোন",
+            titleEn = "Tahajjud Alarm Tone",
+            descBn = "তাহাজ্জুদের ওয়াক্ত শুরু হলে এই সাউন্ড বাজবে",
+            descEn = "Plays when the Tahajjud window begins"
+        ),
+        SoundConfigItem(
             soundKey = SoundHelper.SOUND_FAJR,
             titleBn = "ফজর সালাত অ্যালার্ম টোন",
             titleEn = "Fajr Prayer Alarm Tone",
@@ -97,7 +104,14 @@ fun CustomSoundsAndLogoSubScreen(
             descEn = "Plays when Fajr prayer window begins"
         ),
         SoundConfigItem(
-            soundKey = SoundHelper.SOUND_DUHR,
+            soundKey = SoundHelper.SOUND_DUHA,
+            titleBn = "দুহা / চাশত অ্যালার্ম টোন",
+            titleEn = "Duha Alarm Tone",
+            descBn = "দুহার ওয়াক্ত শুরু হলে এই সাউন্ড বাজবে (যোহরের সাউন্ড থেকে আলাদা)",
+            descEn = "Plays when the Duha window begins (separate from Dhuhr)"
+        ),
+        SoundConfigItem(
+            soundKey = SoundHelper.SOUND_DHUHR,
             titleBn = "যোহর সালাত অ্যালার্ম টোন",
             titleEn = "Dhuhr Prayer Alarm Tone",
             descBn = "যোহরের ওয়াক্ত শুরু হলে স্বয়ংক্রিয়ভাবে এই আযান বা সাউন্ড বাজবে",
@@ -286,7 +300,7 @@ fun CustomSoundsAndLogoSubScreen(
                             }
                         }
 
-                        val cal = remember { Calendar.getInstance(TimeZone.getTimeZone("Asia/Dhaka")) }
+                        val cal = remember { Calendar.getInstance(TimeZone.getDefault()) }
                         val previewHijri = CalendarDateHelper.getHijriDate(cal, isBn, settings.hijriOffset)
 
                         Surface(

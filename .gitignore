@@ -20,3 +20,7 @@ debug.keystore
 .vscode 
 CUSTOM_SOUNDS_AND_LOGO_GUIDE.md
 firestore.rules
+scripts/icons/node_modules
+.firebaserc
+firebase.json
+firestore.indexes.json

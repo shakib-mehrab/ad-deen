@@ -51,7 +51,8 @@ class AdDinLogicTest {
         val nafl = DayNafl(witr = true, tahajjud = true, duha = true)
         val sections = DaySections(wake = true, morning = true, evening = true, sleep = true, zikr = true)
 
-        val (score, isPerfect) = DayRecord.calculateScore(prayers, nafl, sections)
+        // Current rules: Quran is required for 100 / Perfect Day.
+        val (score, isPerfect) = DayRecord.calculateScore(prayers, nafl, sections, quran = true)
 
         assertEquals(100, score)
         assertTrue(isPerfect)
@@ -67,12 +68,12 @@ class AdDinLogicTest {
             isha = PrayerStatus.MISSED // 0 pts
         )
         val nafl = DayNafl(witr = true, tahajjud = false, duha = true) // 10 + 0 + 5 = 15
-        val sections = DaySections(wake = true, morning = true, evening = false, sleep = false, zikr = false) // 3 + 3 = 6
+        val sections = DaySections(wake = true, morning = true, evening = false, sleep = false, zikr = false) // 2 + 2 = 4
 
         val (score, isPerfect) = DayRecord.calculateScore(prayers, nafl, sections)
 
-        // 7 + 12 + 12 + 0 + 0 + 15 + 6 = 52
-        assertEquals(52, score)
+        // 7 + 12 + 12 + 0 + 0 + 15 + 4 = 50
+        assertEquals(50, score)
         assertFalse(isPerfect)
     }
 

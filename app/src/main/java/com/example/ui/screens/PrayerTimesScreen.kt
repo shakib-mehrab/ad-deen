@@ -45,7 +45,7 @@ fun PrayerTimesScreen(
 
     val timeFormat = remember {
         SimpleDateFormat("hh:mm a", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("Asia/Dhaka")
+            timeZone = TimeZone.getDefault()
         }
     }
 
@@ -292,148 +292,14 @@ fun PrayerTimesScreen(
             }
         }
 
-        // Forbidden Prayer Times (মাকরুহ ওয়াক্ত / নিষিদ্ধ সময়) Card
+        // Forbidden Prayer Times (makruh) - shared card, same engine as all other times
         item {
-            val activeForbidden = schedule.activeForbiddenTime(liveTime)
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("forbidden_times_card"),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (activeForbidden != null) com.example.ui.theme.AppColors.WarmTintAlternate else com.example.ui.theme.AppColors.Surface
-                ),
-                border = BorderStroke(
-                    1.dp,
-                    if (activeForbidden != null) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(
-                                imageVector = Icons.Outlined.DoNotDisturb,
-                                contentDescription = "Forbidden",
-                                tint = com.example.ui.theme.AppColors.Secondary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = Strings.t("forbidden_times", lang),
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 16.sp
-                                ),
-                                color = com.example.ui.theme.AppColors.Secondary
-                            )
-                            Surface(
-                                color = com.example.ui.theme.AppColors.WarmTintContainer,
-                                shape = RoundedCornerShape(6.dp),
-                                border = BorderStroke(1.dp, com.example.ui.theme.AppColors.BorderSubtle)
-                            ) {
-                                Text(
-                                    text = if (lang == "bn") "নিষিদ্ধ" else "Forbidden",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    ),
-                                    color = com.example.ui.theme.AppColors.Secondary,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-
-                        if (activeForbidden != null) {
-                            Surface(
-                                color = com.example.ui.theme.AppColors.Secondary,
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = if (lang == "bn") "চলমান" else "ACTIVE NOW",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp
-                                    ),
-                                    color = com.example.ui.theme.AppColors.OnSecondary,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    if (activeForbidden != null) {
-                        val remainingSecs = ((activeForbidden.endTimeMillis - liveTime) / 1000).coerceAtLeast(0)
-                        val m = remainingSecs / 60
-                        val s = remainingSecs % 60
-                        Text(
-                            text = if (lang == "bn") "সতর্কতা: ${activeForbidden.titleBn} চলছে (শেষ হতে বাকি ${String.format(Locale.US, "%02d:%02d", m, s)})"
-                            else "Warning: ${activeForbidden.titleEn} is active (Ends in ${String.format(Locale.US, "%02d:%02d", m, s)})",
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp,
-                                fontFeatureSettings = "tnum"
-                            ),
-                            color = com.example.ui.theme.AppColors.Secondary
-                        )
-                    }
-
-                    // 3 Forbidden Windows
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        schedule.forbiddenTimes.forEach { fb ->
-                            val isFbCurrent = liveTime in fb.startTimeMillis until fb.endTimeMillis
-                            val fbStartStr = timeFormat.format(Date(fb.startTimeMillis))
-                            val fbEndStr = timeFormat.format(Date(fb.endTimeMillis))
-
-                            Surface(
-                                color = if (isFbCurrent) com.example.ui.theme.AppColors.WarmTintAlternate else com.example.ui.theme.AppColors.WarmTintContainer,
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isFbCurrent) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.BorderSubtle
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = if (lang == "bn") fb.titleBn else fb.titleEn,
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 14.sp
-                                            ),
-                                            color = com.example.ui.theme.AppColors.Secondary
-                                        )
-                                        Text(
-                                            text = if (lang == "bn") fb.descBn else fb.descEn,
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                            color = com.example.ui.theme.AppColors.TextSecondary
-                                        )
-                                    }
-
-                                    Text(
-                                        text = "$fbStartStr - $fbEndStr",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp,
-                                            fontFeatureSettings = "tnum"
-                                        ),
-                                        color = if (isFbCurrent) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.TextPrimary
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            com.example.ui.components.ForbiddenTimesCard(
+                schedule = schedule,
+                liveTime = liveTime,
+                lang = lang,
+                showDescriptions = true
+            )
         }
 
         // 7 Prayer Windows List

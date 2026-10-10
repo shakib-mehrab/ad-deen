@@ -3,29 +3,37 @@ package com.example.data
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.example.data.Mappers.toEntity
+import com.example.data.Mappers.toFirestoreMap
+import com.example.data.Mappers.toModel
 import com.example.data.local.AppDatabase
-import com.example.data.local.DayRecordEntity
-import com.example.data.local.UserSettingsEntity
 import com.example.data.local.ZikrItemEntity
 import com.example.model.*
 import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
+import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
-import com.google.firebase.firestore.FieldValue
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.auth.FirebaseAuthWeakPasswordException
+import com.google.firebase.auth.UserProfileChangeRequest
+import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreSettings
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.PersistentCacheSettings
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.UUID
 
 data class AppUser(
     val uid: String,
@@ -33,150 +41,131 @@ data class AppUser(
     val displayName: String,
     val isCloudConnected: Boolean
 ) {
+    /** Display name if set, otherwise the part of the email before "@". Never a hard-coded placeholder. */
     val effectiveName: String
-        get() = displayName.trim().ifBlank {
-            val nameFromEmail = email.substringBefore("@").replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-            nameFromEmail.ifBlank { "Account" }
-        }
+        get() = displayName.trim().ifBlank { email.substringBefore("@").trim() }
 }
 
-class AppRepository(private val context: Context) {
+/**
+ * Local-first data layer: Room is the source of truth for the UI; Firestore (users/{uid}/...)
+ * mirrors it when signed in. Use [getInstance] - one instance per process keeps exactly one
+ * set of Firestore listeners.
+ */
+class AppRepository private constructor(context: Context) {
 
+    companion object {
+        private const val TAG = "AppRepository"
+
+        @Volatile private var INSTANCE: AppRepository? = null
+
+        fun getInstance(context: Context): AppRepository =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: AppRepository(context.applicationContext).also { INSTANCE = it }
+            }
+
+        /**
+         * Last-writer-wins merge of one day. Each device stamps its edits with updatedAt;
+         * the newer edit wins as a whole, so clearing a prayer or Quran also syncs.
+         */
+        fun mergeDay(local: DayRecord?, cloud: DayRecord): DayRecord =
+            if (local == null || cloud.updatedAt > local.updatedAt) cloud else local
+    }
+
+    private val context: Context = context.applicationContext
     private val db = AppDatabase.getInstance(context)
     private val dayDao = db.dayRecordDao()
     private val zikrDao = db.zikrItemDao()
     private val settingsDao = db.userSettingsDao()
 
     private val authPrefs: SharedPreferences = context.getSharedPreferences("addin_auth_prefs", Context.MODE_PRIVATE)
-
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val writeMutex = Mutex()
 
     private var firebaseAuth: FirebaseAuth? = null
     private var firestore: FirebaseFirestore? = null
+    private val listeners = mutableListOf<ListenerRegistration>()
+    private var listenersUid: String? = null
 
     val isFirebaseInitialized = MutableStateFlow(false)
     val firebaseStatus = MutableStateFlow("Local-First Mode")
+    /** Last sync/listener error as a user-readable message (null when healthy). */
+    val syncError = MutableStateFlow<String?>(null)
     val currentUserAccount = MutableStateFlow<AppUser?>(null)
-    val lastSyncTime = MutableStateFlow<Long>(authPrefs.getLong("last_sync_time", 0L))
+    val lastSyncTime = MutableStateFlow(authPrefs.getLong("last_sync_time", 0L))
 
     init {
-        initFirebaseIfAvailable()
-        loadLocalSession()
+        initFirebase()
         initializeDefaultZikrItems()
     }
 
-    private fun initFirebaseIfAvailable() {
+    // ----------------- FIREBASE SETUP -----------------
+
+    private fun initFirebase() {
         try {
-            // Check if default FirebaseApp exists or initialize with correct options
-            val app = if (FirebaseApp.getApps(context).isEmpty()) {
-                val resourceOptions = runCatching { FirebaseOptions.fromResource(context) }.getOrNull()
-                val options = resourceOptions ?: FirebaseOptions.Builder()
-                    .setProjectId("addin-5552a")
-                    .setApplicationId("1:258983954163:android:e2c3606142784352f51986")
-                    .setApiKey("AIzaSyA3Bq6pE8WXkkGYxekZ24Ufk1cPBwch1Ps")
-                    .setGcmSenderId("258983954163")
-                    .setStorageBucket("addin-5552a.firebasestorage.app")
-                    .build()
-                FirebaseApp.initializeApp(context, options)
-            } else {
-                FirebaseApp.getInstance()
-            }
-
-            val auth = FirebaseAuth.getInstance(app)
+            // google-services plugin generates the options from app/google-services.json.
+            val app = FirebaseApp.getApps(context).firstOrNull() ?: FirebaseApp.initializeApp(context)
+                ?: throw IllegalStateException("google-services.json missing")
             val fs = FirebaseFirestore.getInstance(app)
-
-            // Enable Firestore persistent offline cache
-            try {
-                val settings = FirebaseFirestoreSettings.Builder()
+            runCatching {
+                fs.firestoreSettings = FirebaseFirestoreSettings.Builder()
                     .setLocalCacheSettings(PersistentCacheSettings.newBuilder().build())
                     .build()
-                fs.firestoreSettings = settings
-            } catch (e: Exception) {
-                Log.w("AppRepository", "Firestore settings: ${e.message}")
-            }
-
+            }.onFailure { Log.w(TAG, "Firestore settings already applied: ${it.message}") }
+            val auth = FirebaseAuth.getInstance(app)
             firebaseAuth = auth
             firestore = fs
             isFirebaseInitialized.value = true
             firebaseStatus.value = "Firebase Connected"
 
-            auth.addAuthStateListener { updatedAuth ->
-                val fbUser = updatedAuth.currentUser
-                if (fbUser != null) {
-                    scope.launch {
-                        var resolvedName = fbUser.displayName
-                        if (resolvedName.isNullOrBlank()) {
-                            val fs = firestore
-                            if (fs != null) {
-                                try {
-                                    val profileDoc = fs.collection("users").document(fbUser.uid).collection("profile").document("main").get().await()
-                                    resolvedName = profileDoc.getString("displayName")
-                                } catch (e: Exception) {
-                                    Log.w("AppRepository", "Profile read on authState: ${e.message}")
-                                }
-                            }
-                        }
-                        if (resolvedName.isNullOrBlank()) {
-                            resolvedName = authPrefs.getString("user_name", null)
-                        }
-                        if (resolvedName.isNullOrBlank()) {
-                            resolvedName = fbUser.email?.substringBefore("@")?.replaceFirstChar { it.uppercase() } ?: "User"
-                        }
-
-                        val appUser = AppUser(
-                            uid = fbUser.uid,
-                            email = fbUser.email ?: "user@addin.app",
-                            displayName = resolvedName,
-                            isCloudConnected = true
-                        )
-                        currentUserAccount.value = appUser
-                        saveLocalSession(appUser)
-                        attachFirestoreListeners(fbUser.uid)
-
-                        // Auto-sync prayer history from cloud on auth state detection
-                        syncAllToCloud()
-                    }
-                } else {
-                    // Check if previous session was cloud connected
-                    val wasCloud = authPrefs.getBoolean("user_is_cloud", false)
-                    val localUid = authPrefs.getString("user_uid", "")
-                    if (wasCloud || localUid?.startsWith("local_") == true) {
-                        clearLocalSession()
-                        currentUserAccount.value = null
-                    }
-                }
-            }
+            // Restore the cached account immediately so the UI does not flicker while Auth loads.
+            loadCachedSession(auth)
+            auth.addAuthStateListener { a -> onAuthChanged(a.currentUser) }
         } catch (e: Exception) {
-            Log.e("AppRepository", "Firebase init error: ${e.message}", e)
+            Log.e(TAG, "Firebase init error: ${e.message}", e)
             isFirebaseInitialized.value = false
             firebaseStatus.value = "Firebase Unavailable"
         }
     }
 
-    private fun loadLocalSession() {
-        val uid = authPrefs.getString("user_uid", null)
-        val email = authPrefs.getString("user_email", null)
-        val name = authPrefs.getString("user_name", null)
-        val isCloud = authPrefs.getBoolean("user_is_cloud", false)
+    private fun loadCachedSession(auth: FirebaseAuth) {
+        val fbUser = auth.currentUser ?: run { clearLocalSession(); return }
+        currentUserAccount.value = AppUser(
+            uid = fbUser.uid,
+            email = fbUser.email.orEmpty(),
+            displayName = fbUser.displayName?.takeIf { it.isNotBlank() } ?: authPrefs.getString("user_name", null).orEmpty(),
+            isCloudConnected = true
+        )
+    }
 
-        // Clear mock local_ fallback accounts
-        if (uid != null && uid.startsWith("local_")) {
+    private fun onAuthChanged(fbUser: com.google.firebase.auth.FirebaseUser?) {
+        if (fbUser == null) {
+            detachListeners()
             clearLocalSession()
             currentUserAccount.value = null
             return
         }
-
-        if (uid != null && email != null) {
-            currentUserAccount.value = AppUser(
-                uid = uid,
-                email = email,
-                displayName = name ?: email.substringBefore("@"),
-                isCloudConnected = isCloud
-            )
-            if (isCloud && firestore != null) {
-                attachFirestoreListeners(uid)
+        scope.launch {
+            val name = resolveDisplayName(fbUser)
+            val user = AppUser(fbUser.uid, fbUser.email.orEmpty(), name, isCloudConnected = true)
+            currentUserAccount.value = user
+            saveLocalSession(user)
+            attachListeners(fbUser.uid)
+            // Full two-way sync only the first time this account is seen on this install;
+            // after that the realtime listeners + offline queue keep both sides in step.
+            if (authPrefs.getString("full_synced_uid", null) != fbUser.uid) {
+                syncAllToCloud().onSuccess { authPrefs.edit().putString("full_synced_uid", fbUser.uid).apply() }
             }
         }
+    }
+
+    private suspend fun resolveDisplayName(fbUser: com.google.firebase.auth.FirebaseUser): String {
+        fbUser.displayName?.takeIf { it.isNotBlank() }?.let { return it }
+        runCatching {
+            firestore?.collection("users")?.document(fbUser.uid)?.collection("profile")?.document("main")?.get()?.await()
+                ?.getString("displayName")
+        }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+        authPrefs.getString("user_name", null)?.takeIf { it.isNotBlank() }?.let { return it }
+        return "" // AppUser.effectiveName falls back to the email handle
     }
 
     private fun saveLocalSession(user: AppUser) {
@@ -184,666 +173,404 @@ class AppRepository(private val context: Context) {
             .putString("user_uid", user.uid)
             .putString("user_email", user.email)
             .putString("user_name", user.displayName)
-            .putBoolean("user_is_cloud", user.isCloudConnected)
             .apply()
     }
 
     private fun clearLocalSession() {
-        authPrefs.edit().clear().apply()
+        // Keep full_synced_uid so signing back into the same account doesn't redo a full upload.
+        val keep = authPrefs.getString("full_synced_uid", null)
+        val editor = authPrefs.edit().clear()
+        if (keep != null) editor.putString("full_synced_uid", keep)
+        editor.apply()
     }
 
-    private fun attachFirestoreListeners(uid: String) {
+    private fun userDoc(uid: String) = firestore!!.collection("users").document(uid)
+
+    private fun reportError(where: String, e: Exception?) {
+        if (e == null) return
+        Log.w(TAG, "$where: ${e.message}", e)
+        syncError.value = friendlyFirestoreError(e)
+    }
+
+    private fun friendlyFirestoreError(e: Exception): String = when {
+        e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+            "Cloud sync blocked: permission denied. Please sign out and sign in again."
+        e is FirebaseFirestoreException && e.code == FirebaseFirestoreException.Code.UNAVAILABLE ->
+            "You're offline. Changes are saved on this phone and will sync when you reconnect."
+        e is FirebaseNetworkException -> "No internet connection. Changes will sync when you reconnect."
+        else -> e.localizedMessage ?: "Cloud sync failed"
+    }
+
+    // ----------------- REALTIME LISTENERS -----------------
+
+    @Synchronized
+    private fun attachListeners(uid: String) {
+        if (listenersUid == uid) return
+        detachListeners()
         val fs = firestore ?: return
+        listenersUid = uid
+        val user = fs.collection("users").document(uid)
 
-        // Settings listener
-        fs.collection("users").document(uid).collection("settings").document("main")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
-                scope.launch {
-                    val data = snapshot.data ?: return@launch
-                    val current = getSettingsOnce()
-                    val updated = current.copy(
-                        language = (data["language"] as? String) ?: current.language,
-                        calcMethod = (data["calcMethod"] as? String) ?: current.calcMethod,
-                        locationMode = (data["locationMode"] as? String) ?: current.locationMode,
-                        lat = (data["lat"] as? Number)?.toDouble() ?: current.lat,
-                        lng = (data["lng"] as? Number)?.toDouble() ?: current.lng,
-                        district = (data["district"] as? String) ?: current.district
-                    )
-                    saveSettingsLocal(updated)
-                }
+        listeners += user.collection("settings").document("main").addSnapshotListener { snap, err ->
+            if (err != null) return@addSnapshotListener reportError("settings listener", err)
+            if (snap == null || !snap.exists() || snap.metadata.hasPendingWrites()) return@addSnapshotListener
+            val data = snap.data ?: return@addSnapshotListener
+            scope.launch {
+                writeMutex.withLock { saveSettingsLocal(applyCloudSettings(getSettingsOnce(), data)) }
+                syncError.value = null
             }
+        }
 
-        // Days collection listener with smart merge
-        fs.collection("users").document(uid).collection("days")
-            .addSnapshotListener { snapshot, error ->
-                if (error != null || snapshot == null) return@addSnapshotListener
-                scope.launch {
-                    for (doc in snapshot.documents) {
-                        val date = doc.id
-                        val data = doc.data ?: continue
-                        val prayersMap = data["prayers"] as? Map<String, Any?>
-                        val naflMap = data["nafl"] as? Map<String, Any?>
-                        val sectionsMap = data["sections"] as? Map<String, Any?>
-                        val countersMap = (data["counters"] as? Map<*, *>)?.mapNotNull { (k, v) ->
-                            val keyStr = k as? String
-                            val valInt = (v as? Number)?.toInt()
-                            if (keyStr != null && valInt != null) keyStr to valInt else null
-                        }?.toMap() ?: emptyMap()
+        listeners += user.collection("days").addSnapshotListener { snap, err ->
+            if (err != null) return@addSnapshotListener reportError("days listener", err)
+            if (snap == null) return@addSnapshotListener
+            val changes = snap.documentChanges.filter {
+                it.type != DocumentChange.Type.REMOVED && !it.document.metadata.hasPendingWrites()
+            }
+            if (changes.isEmpty()) return@addSnapshotListener
+            scope.launch {
+                writeMutex.withLock {
+                    for (c in changes) {
+                        val cloud = Mappers.dayFromFirestore(c.document.id, c.document.data)
+                        val local = dayDao.getDayByDateOnce(cloud.date)?.toModel()
+                        val merged = mergeDay(local, cloud)
+                        if (merged !== local) dayDao.insertOrUpdate(merged.toEntity())
+                    }
+                }
+                syncError.value = null
+            }
+        }
 
-                        val prayers = DayPrayers.fromMap(prayersMap)
-                        val nafl = DayNafl.fromMap(naflMap)
-                        val sections = DaySections.fromMap(sectionsMap)
-                        val cloudScore = (data["score"] as? Number)?.toInt() ?: 0
-                        val cloudPerfect = (data["perfect"] as? Boolean) ?: false
-                        val cloudQuran = (data["quran"] as? Boolean) == true
-                        val cloudScoreVersion = (data["scoreVersion"] as? Number)?.toInt() ?: 2
-
-                        val local = dayDao.getDayByDateOnce(date)
-                        if (local == null) {
-                            val entity = DayRecordEntity(
-                                date = date,
-                                fajr = prayers.fajr.code,
-                                dhuhr = prayers.dhuhr.code,
-                                asr = prayers.asr.code,
-                                maghrib = prayers.maghrib.code,
-                                isha = prayers.isha.code,
-                                witr = nafl.witr,
-                                tahajjud = nafl.tahajjud,
-                                duha = nafl.duha,
-                                quran = cloudQuran,
-                                scoreVersion = cloudScoreVersion,
-                                wake = sections.wake,
-                                morning = sections.morning,
-                                evening = sections.evening,
-                                sleep = sections.sleep,
-                                zikr = sections.zikr,
-                                countersJson = mapToJson(countersMap),
-                                score = cloudScore,
-                                perfect = cloudPerfect,
-                                updatedAt = System.currentTimeMillis()
+        listeners += user.collection("zikrItems").addSnapshotListener { snap, err ->
+            if (err != null) return@addSnapshotListener reportError("zikr listener", err)
+            if (snap == null) return@addSnapshotListener
+            val changes = snap.documentChanges.filter { !it.document.metadata.hasPendingWrites() }
+            if (changes.isEmpty()) return@addSnapshotListener
+            scope.launch {
+                for (c in changes) {
+                    val d = c.document
+                    if (c.type == DocumentChange.Type.REMOVED) {
+                        zikrDao.deleteItem(d.id)
+                    } else {
+                        zikrDao.insertOrUpdate(
+                            ZikrItemEntity(
+                                id = d.id,
+                                text = d.getString("text") ?: continue,
+                                target = (d.getLong("target") ?: 33L).toInt(),
+                                orderIndex = (d.getLong("order") ?: 0L).toInt(),
+                                isDefault = d.getBoolean("isDefault") == true,
+                                archived = d.getBoolean("archived") == true
                             )
-                            dayDao.insertOrUpdate(entity)
-                        } else {
-                            val mergedPrayers = DayPrayers(
-                                fajr = if (local.fajr != "none" && local.fajr.isNotBlank()) PrayerStatus.fromCode(local.fajr) else prayers.fajr,
-                                dhuhr = if (local.dhuhr != "none" && local.dhuhr.isNotBlank()) PrayerStatus.fromCode(local.dhuhr) else prayers.dhuhr,
-                                asr = if (local.asr != "none" && local.asr.isNotBlank()) PrayerStatus.fromCode(local.asr) else prayers.asr,
-                                maghrib = if (local.maghrib != "none" && local.maghrib.isNotBlank()) PrayerStatus.fromCode(local.maghrib) else prayers.maghrib,
-                                isha = if (local.isha != "none" && local.isha.isNotBlank()) PrayerStatus.fromCode(local.isha) else prayers.isha
-                            )
-                            val mergedNafl = DayNafl(
-                                witr = local.witr || nafl.witr,
-                                tahajjud = local.tahajjud || nafl.tahajjud,
-                                duha = local.duha || nafl.duha
-                            )
-                            val mergedQuran = local.quran || cloudQuran
-                            val mergedScoreVersion = maxOf(local.scoreVersion, cloudScoreVersion)
-                            val mergedSections = DaySections(
-                                wake = local.wake || sections.wake,
-                                morning = local.morning || sections.morning,
-                                evening = local.evening || sections.evening,
-                                sleep = local.sleep || sections.sleep,
-                                zikr = local.zikr || sections.zikr
-                            )
-                            val localCounters = jsonToMap(local.countersJson)
-                            val mergedCounters = (countersMap.keys + localCounters.keys).associateWith { k ->
-                                maxOf(countersMap[k] ?: 0, localCounters[k] ?: 0)
-                            }
-                            val (s, p) = DayRecord.calculateScore(mergedPrayers, mergedNafl, mergedSections, mergedQuran, mergedScoreVersion)
-
-                            dayDao.insertOrUpdate(
-                                local.copy(
-                                    fajr = mergedPrayers.fajr.code,
-                                    dhuhr = mergedPrayers.dhuhr.code,
-                                    asr = mergedPrayers.asr.code,
-                                    maghrib = mergedPrayers.maghrib.code,
-                                    isha = mergedPrayers.isha.code,
-                                    witr = mergedNafl.witr,
-                                    tahajjud = mergedNafl.tahajjud,
-                                    duha = mergedNafl.duha,
-                                    quran = mergedQuran,
-                                    scoreVersion = mergedScoreVersion,
-                                    wake = mergedSections.wake,
-                                    morning = mergedSections.morning,
-                                    evening = mergedSections.evening,
-                                    sleep = mergedSections.sleep,
-                                    zikr = mergedSections.zikr,
-                                    countersJson = mapToJson(mergedCounters),
-                                    score = maxOf(s, cloudScore),
-                                    perfect = p || cloudPerfect,
-                                    updatedAt = System.currentTimeMillis()
-                                )
-                            )
-                        }
+                        )
                     }
                 }
             }
+        }
     }
+
+    @Synchronized
+    private fun detachListeners() {
+        listeners.forEach { it.remove() }
+        listeners.clear()
+        listenersUid = null
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun applyCloudSettings(current: UserSettings, data: Map<String, Any?>): UserSettings {
+        fun cfg(raw: Any?, cur: IstigfarDurudConfig): IstigfarDurudConfig {
+            val m = raw as? Map<String, Any?> ?: return cur
+            return cur.copy(
+                mode = m["mode"] as? String ?: cur.mode,
+                customIntervalMinutes = (m["customIntervalMinutes"] as? Number)?.toInt() ?: cur.customIntervalMinutes,
+                timesPerDay = (m["timesPerDay"] as? Number)?.toInt() ?: cur.timesPerDay,
+                specificTimes = (m["specificTimes"] as? List<*>)?.filterIsInstance<String>() ?: cur.specificTimes,
+                enabled = m["enabled"] as? Boolean ?: cur.enabled
+            )
+        }
+        val toggles = (data["alarmToggles"] as? Map<String, Any?>)
+            ?.mapNotNull { (k, v) -> (v as? Boolean)?.let { k to it } }?.toMap()
+        val azkhar = data["azkharReminders"] as? Map<String, Any?>
+        val quiet = data["quietHours"] as? Map<String, Any?>
+        return current.copy(
+            language = data["language"] as? String ?: current.language,
+            calcMethod = data["calcMethod"] as? String ?: current.calcMethod,
+            locationMode = data["locationMode"] as? String ?: current.locationMode,
+            lat = (data["lat"] as? Number)?.toDouble() ?: current.lat,
+            lng = (data["lng"] as? Number)?.toDouble() ?: current.lng,
+            district = data["district"] as? String ?: current.district,
+            alarmToggles = if (toggles != null) UserSettings.defaultAlarmToggles() + toggles else current.alarmToggles,
+            morningReminder = azkhar?.get("morning") as? Boolean ?: current.morningReminder,
+            eveningReminder = azkhar?.get("evening") as? Boolean ?: current.eveningReminder,
+            istigfar = cfg(data["istigfar"], current.istigfar),
+            durud = cfg(data["durud"], current.durud),
+            quietHoursStart = quiet?.get("start") as? String ?: current.quietHoursStart,
+            quietHoursEnd = quiet?.get("end") as? String ?: current.quietHoursEnd,
+            hijriOffset = (data["hijriOffset"] as? Number)?.toInt() ?: current.hijriOffset,
+            arabicFontSize = (data["arabicFontSize"] as? Number)?.toInt() ?: current.arabicFontSize
+        )
+    }
+
+    private fun settingsToFirestore(s: UserSettings): Map<String, Any> = mapOf(
+        "language" to s.language,
+        "calcMethod" to s.calcMethod,
+        "locationMode" to s.locationMode,
+        "lat" to s.lat,
+        "lng" to s.lng,
+        "district" to s.district,
+        "alarmToggles" to s.alarmToggles,
+        "azkharReminders" to mapOf("morning" to s.morningReminder, "evening" to s.eveningReminder),
+        "istigfar" to reminderMap(s.istigfar),
+        "durud" to reminderMap(s.durud),
+        "quietHours" to mapOf("start" to s.quietHoursStart, "end" to s.quietHoursEnd),
+        "hijriOffset" to s.hijriOffset,
+        "arabicFontSize" to s.arabicFontSize
+    )
+
+    private fun reminderMap(c: IstigfarDurudConfig) = mapOf(
+        "mode" to c.mode,
+        "customIntervalMinutes" to c.customIntervalMinutes,
+        "timesPerDay" to c.timesPerDay,
+        "specificTimes" to c.specificTimes,
+        "enabled" to c.enabled
+    )
 
     private fun initializeDefaultZikrItems() {
         scope.launch {
-            val count = zikrDao.getAllItems().firstOrNull()?.size ?: 0
-            if (count == 0) {
-                val defaults = listOf(
-                    ZikrItemEntity("def_1", "Subhanallah (سُبْحَانَ اللَّهِ)", 33, 1, true, false),
-                    ZikrItemEntity("def_2", "Alhamdulillah (الْحَمْدُ لِلَّهِ)", 33, 2, true, false),
-                    ZikrItemEntity("def_3", "Allahu Akbar (اللَّهُ أَكْبَرُ)", 34, 3, true, false),
-                    ZikrItemEntity("def_4", "La ilaha illallah (لَا إِلَهَ إِلَّا اللَّهُ)", 100, 4, true, false),
-                    ZikrItemEntity("def_5", "Astaghfirullah (أَسْتَغْفِرُ اللَّهَ)", 100, 5, true, false),
-                    ZikrItemEntity("def_6", "Subhanallahi wa bihamdihi (سُبْحَانَ اللَّهِ وَبِحَمْدِهِ)", 100, 6, true, false)
+            if ((zikrDao.getAllItems().firstOrNull()?.size ?: 0) == 0) {
+                zikrDao.insertAll(
+                    listOf(
+                        ZikrItemEntity("def_1", "Subhanallah (سُبْحَانَ اللَّهِ)", 33, 1, true, false),
+                        ZikrItemEntity("def_2", "Alhamdulillah (الْحَمْدُ لِلَّهِ)", 33, 2, true, false),
+                        ZikrItemEntity("def_3", "Allahu Akbar (اللَّهُ أَكْبَرُ)", 34, 3, true, false),
+                        ZikrItemEntity("def_4", "La ilaha illallah (لَا إِلَهَ إِلَّا اللَّهُ)", 100, 4, true, false),
+                        ZikrItemEntity("def_5", "Astaghfirullah (أَسْتَغْفِرُ اللَّهَ)", 100, 5, true, false),
+                        ZikrItemEntity("def_6", "Subhanallahi wa bihamdihi (سُبْحَانَ اللَّهِ وَبِحَمْدِهِ)", 100, 6, true, false)
+                    )
                 )
-                zikrDao.insertAll(defaults)
             }
         }
     }
 
     // ----------------- DAYS / TRACKER -----------------
 
-    fun getAllDays(): Flow<List<DayRecord>> {
-        return dayDao.getAllDays().map { list ->
-            list.map { it.toModel() }
-        }
+    fun getAllDays(): Flow<List<DayRecord>> = dayDao.getAllDays().map { list -> list.map { it.toModel() } }
+
+    fun getDay(date: String): Flow<DayRecord> = dayDao.getDayByDate(date).map { it?.toModel() ?: DayRecord(date = date) }
+
+    suspend fun getDayOnce(date: String): DayRecord = withContext(Dispatchers.IO) {
+        dayDao.getDayByDateOnce(date)?.toModel() ?: DayRecord(date = date)
     }
 
-    fun getDay(date: String): Flow<DayRecord> {
-        return dayDao.getDayByDate(date).map { entity ->
-            entity?.toModel() ?: DayRecord(date = date)
+    /**
+     * Atomically reads the day, applies [transform], recomputes score/perfect and saves
+     * (Room first, then Firestore). Returns (before, after). Serialised so rapid taps never lose an edit.
+     */
+    suspend fun updateDay(date: String, transform: (DayRecord) -> DayRecord): Pair<DayRecord, DayRecord> =
+        withContext(Dispatchers.IO) {
+            writeMutex.withLock {
+                val before = dayDao.getDayByDateOnce(date)?.toModel() ?: DayRecord(date = date)
+                val after = persistDay(transform(before).copy(date = date, updatedAt = System.currentTimeMillis()))
+                before to after
+            }
         }
-    }
 
     suspend fun saveDay(day: DayRecord) {
         withContext(Dispatchers.IO) {
-            val (score, perfect) = DayRecord.calculateScore(
-                day.prayers,
-                day.nafl,
-                day.sections,
-                day.quran,
-                day.scoreVersion
-            )
-            val updatedDay = day.copy(score = score, perfect = perfect, updatedAt = System.currentTimeMillis())
-
-            val entity = DayRecordEntity(
-                date = updatedDay.date,
-                fajr = updatedDay.prayers.fajr.code,
-                dhuhr = updatedDay.prayers.dhuhr.code,
-                asr = updatedDay.prayers.asr.code,
-                maghrib = updatedDay.prayers.maghrib.code,
-                isha = updatedDay.prayers.isha.code,
-                witr = updatedDay.nafl.witr,
-                tahajjud = updatedDay.nafl.tahajjud,
-                duha = updatedDay.nafl.duha,
-                quran = updatedDay.quran,
-                scoreVersion = updatedDay.scoreVersion,
-                wake = updatedDay.sections.wake,
-                morning = updatedDay.sections.morning,
-                evening = updatedDay.sections.evening,
-                sleep = updatedDay.sections.sleep,
-                zikr = updatedDay.sections.zikr,
-                countersJson = mapToJson(updatedDay.counters),
-                score = score,
-                perfect = perfect,
-                updatedAt = updatedDay.updatedAt
-            )
-            dayDao.insertOrUpdate(entity)
-
-            // Sync with Firestore if authenticated
-            val uid = currentUserAccount.value?.uid
-            val fs = firestore
-            if (uid != null && fs != null) {
-                try {
-                    val firestoreMap = hashMapOf<String, Any>(
-                        "prayers" to updatedDay.prayers.toMap(),
-                        "nafl" to updatedDay.nafl.toMap(),
-                        "sections" to updatedDay.sections.toMap(),
-                        "quran" to updatedDay.quran,
-                        "scoreVersion" to updatedDay.scoreVersion,
-                        "counters" to updatedDay.counters,
-                        "score" to score,
-                        "perfect" to perfect,
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                    fs.collection("users").document(uid).collection("days").document(updatedDay.date)
-                        .set(firestoreMap, SetOptions.merge())
-                } catch (e: Exception) {
-                    Log.w("AppRepository", "Firestore day sync queued offline: ${e.message}")
-                }
-            }
+            writeMutex.withLock { persistDay(day.copy(updatedAt = System.currentTimeMillis())) }
         }
+    }
+
+    private suspend fun persistDay(day: DayRecord): DayRecord {
+        val entity = day.toEntity()
+        dayDao.insertOrUpdate(entity)
+        val saved = entity.toModel()
+        pushDay(saved)
+        return saved
+    }
+
+    private fun pushDay(day: DayRecord) {
+        val uid = currentUserAccount.value?.uid ?: return
+        if (firestore == null) return
+        // Firestore queues the write offline and retries; doc id = date, so no duplicates.
+        userDoc(uid).collection("days").document(day.date)
+            .set(day.toFirestoreMap())
+            .addOnFailureListener { reportError("day write ${day.date}", it) }
     }
 
     // ----------------- ZIKR ITEMS -----------------
 
-    fun getActiveZikrItems(): Flow<List<ZikrItem>> {
-        return zikrDao.getActiveItems().map { list ->
-            list.map { ZikrItem(it.id, it.text, it.target, it.orderIndex, it.isDefault, it.archived) }
-        }
-    }
+    fun getActiveZikrItems(): Flow<List<ZikrItem>> =
+        zikrDao.getActiveItems().map { list -> list.map { ZikrItem(it.id, it.text, it.target, it.orderIndex, it.isDefault, it.archived) } }
 
     suspend fun saveZikrItem(item: ZikrItem) {
         withContext(Dispatchers.IO) {
-            val entity = ZikrItemEntity(
-                id = item.id,
-                text = item.text,
-                target = item.target,
-                orderIndex = item.order,
-                isDefault = item.isDefault,
-                archived = item.archived
-            )
-            zikrDao.insertOrUpdate(entity)
-
-            val uid = currentUserAccount.value?.uid
-            val fs = firestore
-            if (uid != null && fs != null) {
-                try {
-                    val map = hashMapOf(
-                        "text" to item.text,
-                        "target" to item.target,
-                        "order" to item.order,
-                        "isDefault" to item.isDefault,
-                        "archived" to item.archived
-                    )
-                    fs.collection("users").document(uid).collection("zikrItems").document(item.id)
-                        .set(map, SetOptions.merge())
-                } catch (e: Exception) {
-                    Log.w("AppRepository", "Firestore zikr sync queued offline: ${e.message}")
-                }
-            }
+            zikrDao.insertOrUpdate(ZikrItemEntity(item.id, item.text, item.target, item.order, item.isDefault, item.archived))
+            pushZikr(item.id, item.text, item.target, item.order, item.isDefault, item.archived)
         }
+    }
+
+    private fun pushZikr(id: String, text: String, target: Int, order: Int, isDefault: Boolean, archived: Boolean) {
+        val uid = currentUserAccount.value?.uid ?: return
+        if (firestore == null) return
+        userDoc(uid).collection("zikrItems").document(id)
+            .set(mapOf("text" to text, "target" to target, "order" to order, "isDefault" to isDefault, "archived" to archived))
+            .addOnFailureListener { reportError("zikr write", it) }
     }
 
     suspend fun deleteZikrItem(id: String) {
         withContext(Dispatchers.IO) {
             zikrDao.deleteItem(id)
-            val uid = currentUserAccount.value?.uid
-            val fs = firestore
-            if (uid != null && fs != null) {
-                try {
-                    fs.collection("users").document(uid).collection("zikrItems").document(id).delete()
-                } catch (e: Exception) {
-                    Log.w("AppRepository", "Firestore zikr delete offline: ${e.message}")
-                }
-            }
+            val uid = currentUserAccount.value?.uid ?: return@withContext
+            if (firestore == null) return@withContext
+            userDoc(uid).collection("zikrItems").document(id).delete()
+                .addOnFailureListener { reportError("zikr delete", it) }
         }
     }
 
     // ----------------- USER SETTINGS -----------------
 
-    fun getSettings(): Flow<UserSettings> {
-        return settingsDao.getSettings().map { entity ->
-            entity?.toModel() ?: UserSettings()
-        }
-    }
+    fun getSettings(): Flow<UserSettings> = settingsDao.getSettings().map { it?.toModel() ?: UserSettings() }
 
-    suspend fun getSettingsOnce(): UserSettings {
-        return withContext(Dispatchers.IO) {
-            settingsDao.getSettingsOnce()?.toModel() ?: UserSettings()
-        }
+    suspend fun getSettingsOnce(): UserSettings = withContext(Dispatchers.IO) {
+        settingsDao.getSettingsOnce()?.toModel() ?: UserSettings()
     }
 
     suspend fun saveSettings(settings: UserSettings) {
-        saveSettingsLocal(settings)
+        withContext(Dispatchers.IO) { saveSettingsLocal(settings) }
+        pushSettings(settings)
+    }
 
-        val uid = currentUserAccount.value?.uid
-        val fs = firestore
-        if (uid != null && fs != null) {
-            withContext(Dispatchers.IO) {
-                try {
-                    val map = hashMapOf<String, Any>(
-                        "language" to settings.language,
-                        "calcMethod" to settings.calcMethod,
-                        "locationMode" to settings.locationMode,
-                        "lat" to settings.lat,
-                        "lng" to settings.lng,
-                        "district" to settings.district,
-                        "alarmToggles" to settings.alarmToggles,
-                        "azkharReminders" to mapOf(
-                            "morning" to settings.morningReminder,
-                            "evening" to settings.eveningReminder
-                        ),
-                        "istigfar" to mapOf(
-                            "mode" to settings.istigfar.mode,
-                            "customIntervalMinutes" to settings.istigfar.customIntervalMinutes,
-                            "timesPerDay" to settings.istigfar.timesPerDay,
-                            "specificTimes" to settings.istigfar.specificTimes,
-                            "enabled" to settings.istigfar.enabled
-                        ),
-                        "durud" to mapOf(
-                            "mode" to settings.durud.mode,
-                            "customIntervalMinutes" to settings.durud.customIntervalMinutes,
-                            "timesPerDay" to settings.durud.timesPerDay,
-                            "specificTimes" to settings.durud.specificTimes,
-                            "enabled" to settings.durud.enabled
-                        ),
-                        "quietHours" to mapOf(
-                            "start" to settings.quietHoursStart,
-                            "end" to settings.quietHoursEnd
-                        )
-                    )
-                    fs.collection("users").document(uid).collection("settings").document("main")
-                        .set(map, SetOptions.merge())
-                } catch (e: Exception) {
-                    Log.w("AppRepository", "Firestore settings save offline: ${e.message}")
-                }
+    /** Applies [transform] to the latest stored settings and saves; avoids lost updates from stale UI copies. */
+    suspend fun updateSettings(transform: (UserSettings) -> UserSettings): UserSettings {
+        val updated = withContext(Dispatchers.IO) {
+            writeMutex.withLock {
+                transform(getSettingsOnce()).also { saveSettingsLocal(it) }
             }
         }
+        pushSettings(updated)
+        return updated
+    }
+
+    private fun pushSettings(settings: UserSettings) {
+        val uid = currentUserAccount.value?.uid ?: return
+        if (firestore == null) return
+        userDoc(uid).collection("settings").document("main")
+            .set(settingsToFirestore(settings), SetOptions.merge())
+            .addOnFailureListener { reportError("settings write", it) }
     }
 
     private suspend fun saveSettingsLocal(settings: UserSettings) {
-        withContext(Dispatchers.IO) {
-            val entity = UserSettingsEntity(
-                id = 1,
-                language = settings.language,
-                calcMethod = settings.calcMethod,
-                locationMode = settings.locationMode,
-                lat = settings.lat,
-                lng = settings.lng,
-                district = settings.district,
-                alarmTogglesJson = mapToJson(settings.alarmToggles),
-                morningReminder = settings.morningReminder,
-                eveningReminder = settings.eveningReminder,
-                istigfarMode = settings.istigfar.mode,
-                istigfarCustomMinutes = settings.istigfar.customIntervalMinutes,
-                istigfarTimesPerDay = settings.istigfar.timesPerDay,
-                istigfarSpecificTimesJson = listToJson(settings.istigfar.specificTimes),
-                istigfarEnabled = settings.istigfar.enabled,
-                durudMode = settings.durud.mode,
-                durudCustomMinutes = settings.durud.customIntervalMinutes,
-                durudTimesPerDay = settings.durud.timesPerDay,
-                durudSpecificTimesJson = listToJson(settings.durud.specificTimes),
-                durudEnabled = settings.durud.enabled,
-                quietHoursStart = settings.quietHoursStart,
-                quietHoursEnd = settings.quietHoursEnd,
-                hijriOffset = settings.hijriOffset,
-                arabicFontSize = settings.arabicFontSize,
-                customSoundNamesJson = mapToJson(settings.customSoundNames)
-            )
-            settingsDao.saveSettings(entity)
-        }
+        withContext(Dispatchers.IO) { settingsDao.saveSettings(settings.toEntity()) }
     }
 
     // ----------------- CLOUD SYNC & AUTHENTICATION -----------------
 
+    /** Two-way sync: pull + last-writer-wins merge every day, then push everything local. */
     suspend fun syncAllToCloud(): Result<Int> = withContext(Dispatchers.IO) {
         runCatching {
             val user = currentUserAccount.value ?: throw IllegalStateException("Please sign in first")
+            val fs = firestore ?: throw IllegalStateException("Cloud sync is not available")
             val uid = user.uid
-            val fs = firestore ?: throw IllegalStateException("Firestore is not available")
 
-            var totalSyncedDays = 0
-
-            // 1. PULL down all cloud days from Firestore into local Room database
-            try {
-                val cloudSnapshot = fs.collection("users").document(uid).collection("days").get().await()
-                for (doc in cloudSnapshot.documents) {
-                    val date = doc.id
-                    val data = doc.data ?: continue
-                    val prayersMap = data["prayers"] as? Map<String, Any?>
-                    val naflMap = data["nafl"] as? Map<String, Any?>
-                    val sectionsMap = data["sections"] as? Map<String, Any?>
-                    val cloudCounters = (data["counters"] as? Map<*, *>)?.mapNotNull { (k, v) ->
-                        val keyStr = k as? String
-                        val valInt = (v as? Number)?.toInt()
-                        if (keyStr != null && valInt != null) keyStr to valInt else null
-                    }?.toMap() ?: emptyMap()
-
-                    val cloudPrayers = DayPrayers.fromMap(prayersMap)
-                    val cloudNafl = DayNafl.fromMap(naflMap)
-                    val cloudSections = DaySections.fromMap(sectionsMap)
-                    val cloudScore = (data["score"] as? Number)?.toInt() ?: 0
-                    val cloudPerfect = (data["perfect"] as? Boolean) ?: false
-
-                    val localEntity = dayDao.getDayByDateOnce(date)
-                    if (localEntity == null) {
-                        val newEntity = DayRecordEntity(
-                            date = date,
-                            fajr = cloudPrayers.fajr.code,
-                            dhuhr = cloudPrayers.dhuhr.code,
-                            asr = cloudPrayers.asr.code,
-                            maghrib = cloudPrayers.maghrib.code,
-                            isha = cloudPrayers.isha.code,
-                            witr = cloudNafl.witr,
-                            tahajjud = cloudNafl.tahajjud,
-                            duha = cloudNafl.duha,
-                            wake = cloudSections.wake,
-                            morning = cloudSections.morning,
-                            evening = cloudSections.evening,
-                            sleep = cloudSections.sleep,
-                            zikr = cloudSections.zikr,
-                            countersJson = mapToJson(cloudCounters),
-                            score = cloudScore,
-                            perfect = cloudPerfect,
-                            updatedAt = System.currentTimeMillis()
-                        )
-                        dayDao.insertOrUpdate(newEntity)
-                        totalSyncedDays++
-                    } else {
-                        // Merge local and cloud record intelligently:
-                        val mergedPrayers = DayPrayers(
-                            fajr = if (localEntity.fajr != "none" && localEntity.fajr.isNotBlank()) PrayerStatus.fromCode(localEntity.fajr) else cloudPrayers.fajr,
-                            dhuhr = if (localEntity.dhuhr != "none" && localEntity.dhuhr.isNotBlank()) PrayerStatus.fromCode(localEntity.dhuhr) else cloudPrayers.dhuhr,
-                            asr = if (localEntity.asr != "none" && localEntity.asr.isNotBlank()) PrayerStatus.fromCode(localEntity.asr) else cloudPrayers.asr,
-                            maghrib = if (localEntity.maghrib != "none" && localEntity.maghrib.isNotBlank()) PrayerStatus.fromCode(localEntity.maghrib) else cloudPrayers.maghrib,
-                            isha = if (localEntity.isha != "none" && localEntity.isha.isNotBlank()) PrayerStatus.fromCode(localEntity.isha) else cloudPrayers.isha
-                        )
-                        val mergedNafl = DayNafl(
-                            witr = localEntity.witr || cloudNafl.witr,
-                            tahajjud = localEntity.tahajjud || cloudNafl.tahajjud,
-                            duha = localEntity.duha || cloudNafl.duha
-                        )
-                        val mergedSections = DaySections(
-                            wake = localEntity.wake || cloudSections.wake,
-                            morning = localEntity.morning || cloudSections.morning,
-                            evening = localEntity.evening || cloudSections.evening,
-                            sleep = localEntity.sleep || cloudSections.sleep,
-                            zikr = localEntity.zikr || cloudSections.zikr
-                        )
-                        val localCounters = jsonToMap(localEntity.countersJson)
-                        val mergedCounters = (cloudCounters.keys + localCounters.keys).associateWith { key ->
-                            maxOf(cloudCounters[key] ?: 0, localCounters[key] ?: 0)
-                        }
-                        val (calcScore, calcPerfect) = DayRecord.calculateScore(mergedPrayers, mergedNafl, mergedSections)
-                        val mergedScore = maxOf(calcScore, cloudScore)
-                        val mergedPerfect = calcPerfect || cloudPerfect
-
-                        val updatedEntity = localEntity.copy(
-                            fajr = mergedPrayers.fajr.code,
-                            dhuhr = mergedPrayers.dhuhr.code,
-                            asr = mergedPrayers.asr.code,
-                            maghrib = mergedPrayers.maghrib.code,
-                            isha = mergedPrayers.isha.code,
-                            witr = mergedNafl.witr,
-                            tahajjud = mergedNafl.tahajjud,
-                            duha = mergedNafl.duha,
-                            wake = mergedSections.wake,
-                            morning = mergedSections.morning,
-                            evening = mergedSections.evening,
-                            sleep = mergedSections.sleep,
-                            zikr = mergedSections.zikr,
-                            countersJson = mapToJson(mergedCounters),
-                            score = mergedScore,
-                            perfect = mergedPerfect,
-                            updatedAt = System.currentTimeMillis()
-                        )
-                        dayDao.insertOrUpdate(updatedEntity)
-                        totalSyncedDays++
-                    }
-                }
+            val cloudDocs = try {
+                fs.collection("users").document(uid).collection("days").get().await().documents
             } catch (e: Exception) {
-                Log.w("AppRepository", "Error pulling days from cloud: ${e.message}")
+                throw IllegalStateException(friendlyFirestoreError(e))
             }
 
-            // 2. PUSH all local days up to Firestore so cloud is fully up to date
-            val allLocalDays = dayDao.getAllDays().first()
-            for (day in allLocalDays) {
-                val counters = jsonToMap(day.countersJson)
-                val dayMap = hashMapOf<String, Any>(
-                    "prayers" to mapOf(
-                        "fajr" to day.fajr,
-                        "dhuhr" to day.dhuhr,
-                        "asr" to day.asr,
-                        "maghrib" to day.maghrib,
-                        "isha" to day.isha
-                    ),
-                    "nafl" to mapOf(
-                        "witr" to day.witr,
-                        "tahajjud" to day.tahajjud,
-                        "duha" to day.duha
-                    ),
-                    "sections" to mapOf(
-                        "wake" to day.wake,
-                        "morning" to day.morning,
-                        "evening" to day.evening,
-                        "sleep" to day.sleep,
-                        "zikr" to day.zikr
-                    ),
-                    "counters" to counters,
-                    "score" to day.score,
-                    "perfect" to day.perfect,
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-                fs.collection("users").document(uid).collection("days").document(day.date)
-                    .set(dayMap, SetOptions.merge())
+            writeMutex.withLock {
+                for (doc in cloudDocs) {
+                    val data = doc.data ?: continue
+                    val cloud = Mappers.dayFromFirestore(doc.id, data)
+                    val local = dayDao.getDayByDateOnce(doc.id)?.toModel()
+                    val merged = mergeDay(local, cloud)
+                    if (merged !== local) dayDao.insertOrUpdate(merged.toEntity())
+                }
             }
+
+            val allLocalDays = dayDao.getAllDays().first().map { it.toModel() }
+            val batchLimit = 400
+            allLocalDays.chunked(batchLimit).forEach { chunk ->
+                val batch = fs.batch()
+                chunk.forEach { day -> batch.set(fs.collection("users").document(uid).collection("days").document(day.date), day.toFirestoreMap()) }
+                batch.commit().await()
+            }
+            zikrDao.getAllItems().first().forEach { z -> pushZikr(z.id, z.text, z.target, z.orderIndex, z.isDefault, z.archived) }
+            pushSettings(getSettingsOnce())
+            ensureProfile(uid, user.email, user.displayName)
 
             val now = System.currentTimeMillis()
             lastSyncTime.value = now
             authPrefs.edit().putLong("last_sync_time", now).apply()
+            syncError.value = null
+            allLocalDays.size
+        }.onFailure { syncError.value = it.message }
+    }
 
-            maxOf(totalSyncedDays, allLocalDays.size)
-        }
+    private fun ensureProfile(uid: String, email: String, displayName: String) {
+        val data = mutableMapOf<String, Any>("email" to email)
+        if (displayName.isNotBlank()) data["displayName"] = displayName
+        userDoc(uid).collection("profile").document("main").set(data, SetOptions.merge())
+            .addOnFailureListener { reportError("profile write", it) }
     }
 
     suspend fun checkFirebaseConnection(): Pair<Boolean, String> = withContext(Dispatchers.IO) {
-        val auth = firebaseAuth
-        val fs = firestore
-        if (auth == null || fs == null) {
-            return@withContext Pair(false, "Firebase SDK not initialized")
-        }
-        val user = currentUserAccount.value
-        if (user == null || !user.isCloudConnected) {
-            return@withContext Pair(true, "Firebase reachable (Ready for Sign In)")
-        }
+        val fs = firestore ?: return@withContext Pair(false, "Firebase SDK not initialized")
+        val user = currentUserAccount.value ?: return@withContext Pair(true, "Firebase ready (sign in to sync)")
         try {
-            // Verify Firestore read for current user
-            fs.collection("users").document(user.uid).collection("days").limit(1).get().await()
-            Pair(true, "Firebase Connected & Authorized (${user.email})")
+            fs.collection("users").document(user.uid).collection("days").limit(1)
+                .get(com.google.firebase.firestore.Source.SERVER).await()
+            syncError.value = null
+            Pair(true, "Connected & authorized (${user.email})")
         } catch (e: Exception) {
-            Pair(false, "Connection check: ${e.localizedMessage ?: e.message}")
+            Pair(false, friendlyFirestoreError(e))
         }
     }
 
+    private fun authErrorMessage(e: Exception, fallback: String): String = when (e) {
+        is FirebaseAuthInvalidUserException -> "No account found with this email. Switch to 'Register' to create it."
+        is FirebaseAuthUserCollisionException -> "An account with this email already exists. Switch to 'Sign In'."
+        is FirebaseAuthWeakPasswordException -> "Password is too weak. Please use at least 6 characters."
+        is FirebaseAuthInvalidCredentialsException -> "Incorrect email or password."
+        is FirebaseNetworkException -> "No internet connection. Please check your network and try again."
+        else -> e.localizedMessage ?: fallback
+    }
+
     suspend fun signInWithEmail(email: String, pass: String): Result<AppUser> = withContext(Dispatchers.IO) {
-        val auth = firebaseAuth ?: return@withContext Result.failure(Exception("Firebase is not initialized"))
+        val auth = firebaseAuth ?: return@withContext Result.failure(Exception("Cloud sign-in is unavailable on this device"))
         try {
-            val result = auth.signInWithEmailAndPassword(email.trim(), pass).await()
-            val fbUser = result.user ?: throw IllegalStateException("Firebase sign in returned no user")
-
-            // Resolve full User Name: check fbUser.displayName, then Firestore profile, then local prefs, then email handle
-            var resolvedName = fbUser.displayName
-            if (resolvedName.isNullOrBlank()) {
-                val fs = firestore
-                if (fs != null) {
-                    try {
-                        val profileDoc = fs.collection("users").document(fbUser.uid).collection("profile").document("main").get().await()
-                        resolvedName = profileDoc.getString("displayName")
-                    } catch (e: Exception) {
-                        Log.w("AppRepository", "Profile read on signIn: ${e.message}")
-                    }
-                }
-            }
-            if (resolvedName.isNullOrBlank()) {
-                resolvedName = authPrefs.getString("user_name", null)
-            }
-            if (resolvedName.isNullOrBlank()) {
-                resolvedName = email.trim().substringBefore("@").replaceFirstChar { it.uppercase() }
-            }
-
-            // Sync back to Firebase Auth profile if not set
-            if (fbUser.displayName.isNullOrBlank() && !resolvedName.isNullOrBlank()) {
-                try {
-                    val req = com.google.firebase.auth.UserProfileChangeRequest.Builder()
-                        .setDisplayName(resolvedName)
-                        .build()
-                    fbUser.updateProfile(req).await()
-                } catch (e: Exception) {
-                    Log.w("AppRepository", "updateProfile on login: ${e.message}")
-                }
-            }
-
-            val appUser = AppUser(
-                uid = fbUser.uid,
-                email = fbUser.email ?: email.trim(),
-                displayName = resolvedName,
-                isCloudConnected = true
-            )
-            currentUserAccount.value = appUser
-            saveLocalSession(appUser)
-            attachFirestoreListeners(fbUser.uid)
-
-            // Immediately synchronize prayer history from and to cloud
-            syncAllToCloud()
-
-            Result.success(appUser)
+            val fbUser = auth.signInWithEmailAndPassword(email.trim(), pass).await().user
+                ?: throw IllegalStateException("Sign in returned no user")
+            val user = AppUser(fbUser.uid, fbUser.email ?: email.trim(), resolveDisplayName(fbUser), isCloudConnected = true)
+            currentUserAccount.value = user
+            saveLocalSession(user)
+            attachListeners(fbUser.uid)
+            syncAllToCloud().onSuccess { authPrefs.edit().putString("full_synced_uid", fbUser.uid).apply() }
+            Result.success(user)
         } catch (e: Exception) {
-            Log.e("AppRepository", "Firebase auth failed", e)
-            val friendlyMsg = when {
-                e is com.google.firebase.auth.FirebaseAuthInvalidUserException ->
-                    "No account found with this email. Please switch to 'Register' below to create this account."
-                e is com.google.firebase.auth.FirebaseAuthInvalidCredentialsException ->
-                    "Incorrect password or invalid email format."
-                e is com.google.firebase.FirebaseNetworkException ->
-                    "Network error: Unable to connect to Firebase. Check your internet connection."
-                else -> e.localizedMessage ?: "Firebase sign-in failed. Please check credentials or register."
-            }
-            Result.failure(Exception(friendlyMsg))
+            Log.e(TAG, "Sign in failed", e)
+            Result.failure(Exception(authErrorMessage(e, "Sign in failed")))
         }
     }
 
     suspend fun registerWithEmail(email: String, pass: String, displayName: String): Result<AppUser> = withContext(Dispatchers.IO) {
-        val auth = firebaseAuth ?: return@withContext Result.failure(Exception("Firebase is not initialized"))
-        val effectiveName = if (displayName.isNotBlank()) displayName.trim() else email.trim().substringBefore("@").replaceFirstChar { it.uppercase() }
-
+        val auth = firebaseAuth ?: return@withContext Result.failure(Exception("Cloud sign-in is unavailable on this device"))
+        val name = displayName.trim()
         try {
-            val result = auth.createUserWithEmailAndPassword(email.trim(), pass).await()
-            val fbUser = result.user ?: throw IllegalStateException("Firebase registration returned no user")
-
-            try {
-                val req = com.google.firebase.auth.UserProfileChangeRequest.Builder()
-                    .setDisplayName(effectiveName)
-                    .build()
-                fbUser.updateProfile(req).await()
-            } catch (e: Exception) {
-                Log.w("AppRepository", "updateProfile on register: ${e.message}")
+            val fbUser = auth.createUserWithEmailAndPassword(email.trim(), pass).await().user
+                ?: throw IllegalStateException("Registration returned no user")
+            if (name.isNotBlank()) {
+                runCatching { fbUser.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name).build()).await() }
             }
-
-            val appUser = AppUser(
-                uid = fbUser.uid,
-                email = fbUser.email ?: email.trim(),
-                displayName = effectiveName,
-                isCloudConnected = true
-            )
-            currentUserAccount.value = appUser
-            saveLocalSession(appUser)
-            saveUserProfile(effectiveName, email.trim())
-            attachFirestoreListeners(fbUser.uid)
-
-            // Immediately synchronize initial prayer history to cloud
-            syncAllToCloud()
-
-            Result.success(appUser)
+            val user = AppUser(fbUser.uid, fbUser.email ?: email.trim(), name, isCloudConnected = true)
+            currentUserAccount.value = user
+            saveLocalSession(user)
+            attachListeners(fbUser.uid)
+            syncAllToCloud().onSuccess { authPrefs.edit().putString("full_synced_uid", fbUser.uid).apply() }
+            Result.success(user)
         } catch (e: Exception) {
-            Log.e("AppRepository", "Firebase registration failed", e)
-            val friendlyMsg = when {
-                e is com.google.firebase.auth.FirebaseAuthUserCollisionException ->
-                    "An account with this email already exists. Please switch to 'Sign In'."
-                e is com.google.firebase.auth.FirebaseAuthWeakPasswordException ->
-                    "Password is too weak. Please use at least 6 characters."
-                e is com.google.firebase.FirebaseNetworkException ->
-                    "Network error: Unable to connect to Firebase. Check your internet connection."
-                else -> e.localizedMessage ?: "Registration failed. Please check your details."
-            }
-            Result.failure(Exception(friendlyMsg))
+            Log.e(TAG, "Registration failed", e)
+            Result.failure(Exception(authErrorMessage(e, "Registration failed")))
         }
     }
 
@@ -851,231 +578,58 @@ class AppRepository(private val context: Context) {
         val trimmed = newName.trim()
         if (trimmed.isBlank()) return@withContext Result.failure(IllegalArgumentException("Name cannot be empty"))
         val user = currentUserAccount.value ?: return@withContext Result.failure(IllegalStateException("Not signed in"))
-        val auth = firebaseAuth
-        val fs = firestore
         try {
-            val fbUser = auth?.currentUser
-            if (fbUser != null) {
-                val req = com.google.firebase.auth.UserProfileChangeRequest.Builder()
-                    .setDisplayName(trimmed)
-                    .build()
-                fbUser.updateProfile(req).await()
-            }
-            if (fs != null) {
-                fs.collection("users").document(user.uid).collection("profile").document("main")
-                    .set(mapOf("displayName" to trimmed, "email" to user.email), SetOptions.merge())
-            }
+            firebaseAuth?.currentUser?.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(trimmed).build())?.await()
+            ensureProfile(user.uid, user.email, trimmed)
             val updated = user.copy(displayName = trimmed)
             currentUserAccount.value = updated
             saveLocalSession(updated)
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(authErrorMessage(e, "Could not update name")))
         }
     }
 
-    private suspend fun saveUserProfile(displayName: String, email: String) {
-        val uid = currentUserAccount.value?.uid ?: return
-        val fs = firestore ?: return
-        withContext(Dispatchers.IO) {
-            try {
-                val profileMap = hashMapOf(
-                    "email" to email,
-                    "displayName" to displayName,
-                    "createdAt" to FieldValue.serverTimestamp()
-                )
-                fs.collection("users").document(uid).collection("profile").document("main")
-                    .set(profileMap, SetOptions.merge())
-            } catch (e: Exception) {
-                Log.w("AppRepository", "Profile save offline: ${e.message}")
-            }
-        }
-    }
-
-    suspend fun deleteUserAccount(): Result<Unit> {
-        return withContext(Dispatchers.IO) {
-            try {
-                val uid = currentUserAccount.value?.uid
-                val fs = firestore
-                val user = firebaseAuth?.currentUser
-
-                if (uid != null && fs != null) {
-                    try {
-                        val daysSnapshot = fs.collection("users").document(uid).collection("days").get().await()
-                        for (doc in daysSnapshot.documents) doc.reference.delete().await()
-
-                        val zikrSnapshot = fs.collection("users").document(uid).collection("zikrItems").get().await()
-                        for (doc in zikrSnapshot.documents) doc.reference.delete().await()
-
-                        val settingsSnapshot = fs.collection("users").document(uid).collection("settings").get().await()
-                        for (doc in settingsSnapshot.documents) doc.reference.delete().await()
-
-                        val profileSnapshot = fs.collection("users").document(uid).collection("profile").get().await()
-                        for (doc in profileSnapshot.documents) doc.reference.delete().await()
-
-                        fs.collection("users").document(uid).delete().await()
-                    } catch (e: Exception) {
-                        Log.w("AppRepository", "Cloud records cleanup: ${e.message}")
+    /**
+     * Deletes cloud data, then the auth account, then local data. Reports failure honestly:
+     * Firebase requires a recent sign-in to delete an account.
+     */
+    suspend fun deleteUserAccount(): Result<Unit> = withContext(Dispatchers.IO) {
+        val uid = currentUserAccount.value?.uid
+        val fbUser = firebaseAuth?.currentUser
+        try {
+            if (uid != null && firestore != null) {
+                detachListeners()
+                for (sub in listOf("days", "zikrItems", "settings", "profile")) {
+                    val docs = userDoc(uid).collection(sub).get().await().documents
+                    docs.chunked(400).forEach { chunk ->
+                        val batch = firestore!!.batch()
+                        chunk.forEach { batch.delete(it.reference) }
+                        batch.commit().await()
                     }
                 }
-
-                try {
-                    user?.delete()?.await()
-                } catch (e: Exception) {
-                    Log.w("AppRepository", "Auth user delete: ${e.message}")
-                }
-
-                // Clear local database
-                dayDao.clearAll()
-                zikrDao.clearAll()
-                settingsDao.clearAll()
-                initializeDefaultZikrItems()
-                clearLocalSession()
-
-                currentUserAccount.value = null
-                Result.success(Unit)
-            } catch (e: Exception) {
-                Log.e("AppRepository", "Error deleting account: ${e.message}", e)
-                Result.failure(e)
+                userDoc(uid).delete().await()
             }
+            fbUser?.delete()?.await()
+        } catch (e: FirebaseAuthRecentLoginRequiredException) {
+            return@withContext Result.failure(Exception("For security, please sign out, sign in again, then delete your account."))
+        } catch (e: Exception) {
+            Log.e(TAG, "Delete account failed", e)
+            return@withContext Result.failure(Exception(friendlyFirestoreError(e)))
         }
+        dayDao.clearAll()
+        zikrDao.clearAll()
+        settingsDao.clearAll()
+        initializeDefaultZikrItems()
+        authPrefs.edit().clear().apply()
+        currentUserAccount.value = null
+        Result.success(Unit)
     }
 
     fun signOut() {
-        try {
-            firebaseAuth?.signOut()
-        } catch (_: Exception) {}
+        detachListeners()
+        runCatching { firebaseAuth?.signOut() }
         clearLocalSession()
         currentUserAccount.value = null
-    }
-
-    // ----------------- HELPERS -----------------
-
-    private fun DayRecordEntity.toModel(): DayRecord {
-        val counters = jsonToMap(countersJson)
-        val prayers = DayPrayers(
-            fajr = PrayerStatus.fromCode(fajr),
-            dhuhr = PrayerStatus.fromCode(dhuhr),
-            asr = PrayerStatus.fromCode(asr),
-            maghrib = PrayerStatus.fromCode(maghrib),
-            isha = PrayerStatus.fromCode(isha)
-        )
-        val nafl = DayNafl(witr = witr, tahajjud = tahajjud, duha = duha)
-        val sections = DaySections(wake = wake, morning = morning, evening = evening, sleep = sleep, zikr = zikr)
-        return DayRecord(
-            date = date,
-            prayers = prayers,
-            nafl = nafl,
-            sections = sections,
-            quran = quran,
-            scoreVersion = scoreVersion,
-            counters = counters,
-            score = score,
-            perfect = perfect,
-            updatedAt = updatedAt
-        )
-    }
-
-    private fun UserSettingsEntity.toModel(): UserSettings {
-        val alarmToggles = jsonToMapBool(alarmTogglesJson).ifEmpty { UserSettings.defaultAlarmToggles() }
-        val istigfarTimes = jsonToList(istigfarSpecificTimesJson).ifEmpty { listOf("09:00", "12:00", "15:00", "18:00", "21:00") }
-        val durudTimes = jsonToList(durudSpecificTimesJson).ifEmpty { listOf("09:00", "12:00", "15:00", "18:00", "21:00") }
-
-        return UserSettings(
-            language = language,
-            calcMethod = calcMethod,
-            locationMode = locationMode,
-            lat = lat,
-            lng = lng,
-            district = district,
-            alarmToggles = alarmToggles,
-            morningReminder = morningReminder,
-            eveningReminder = eveningReminder,
-            istigfar = IstigfarDurudConfig(
-                mode = istigfarMode,
-                customIntervalMinutes = istigfarCustomMinutes,
-                timesPerDay = istigfarTimesPerDay,
-                specificTimes = istigfarTimes,
-                enabled = istigfarEnabled
-            ),
-            durud = IstigfarDurudConfig(
-                mode = durudMode,
-                customIntervalMinutes = durudCustomMinutes,
-                timesPerDay = durudTimesPerDay,
-                specificTimes = durudTimes,
-                enabled = durudEnabled
-            ),
-            quietHoursStart = quietHoursStart,
-            quietHoursEnd = quietHoursEnd,
-            hijriOffset = hijriOffset,
-            arabicFontSize = if (arabicFontSize in 18..44) arabicFontSize else 26,
-            customSoundNames = jsonToMapString(customSoundNamesJson)
-        )
-    }
-
-    private fun mapToJson(map: Map<String, Any?>): String {
-        val obj = JSONObject()
-        map.forEach { (k, v) -> obj.put(k, v) }
-        return obj.toString()
-    }
-
-    private fun jsonToMapString(json: String?): Map<String, String> {
-        if (json.isNullOrBlank()) return emptyMap()
-        return runCatching {
-            val obj = JSONObject(json)
-            val map = mutableMapOf<String, String>()
-            val keys = obj.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                map[k] = obj.getString(k)
-            }
-            map
-        }.getOrDefault(emptyMap())
-    }
-
-    private fun jsonToMap(json: String?): Map<String, Int> {
-        if (json.isNullOrBlank()) return emptyMap()
-        return runCatching {
-            val obj = JSONObject(json)
-            val map = mutableMapOf<String, Int>()
-            val keys = obj.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                map[k] = obj.getInt(k)
-            }
-            map
-        }.getOrDefault(emptyMap())
-    }
-
-    private fun jsonToMapBool(json: String?): Map<String, Boolean> {
-        if (json.isNullOrBlank()) return emptyMap()
-        return runCatching {
-            val obj = JSONObject(json)
-            val map = mutableMapOf<String, Boolean>()
-            val keys = obj.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                map[k] = obj.getBoolean(k)
-            }
-            map
-        }.getOrDefault(emptyMap())
-    }
-
-    private fun listToJson(list: List<String>): String {
-        val arr = JSONArray()
-        list.forEach { arr.put(it) }
-        return arr.toString()
-    }
-
-    private fun jsonToList(json: String?): List<String> {
-        if (json.isNullOrBlank()) return emptyList()
-        return runCatching {
-            val arr = JSONArray(json)
-            val list = mutableListOf<String>()
-            for (i in 0 until arr.length()) {
-                list.add(arr.getString(i))
-            }
-            list
-        }.getOrDefault(emptyList())
     }
 }

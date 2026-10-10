@@ -182,7 +182,7 @@ fun MoreScreen(
                             ) {
                                 if (currentUser != null) {
                                     Text(
-                                        text = (effectiveUserName.firstOrNull() ?: 'U').uppercase(),
+                                        text = effectiveUserName.trim().take(1).uppercase(),
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                         color = com.example.ui.theme.AppColors.OnPrimary
                                     )
@@ -200,11 +200,6 @@ fun MoreScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Text(
-                                            text = if (lang == "bn") "ব্যবহারকারী:" else "User:",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                            color = com.example.ui.theme.AppColors.Secondary
-                                        )
                                         Text(
                                             text = effectiveUserName,
                                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -621,7 +616,7 @@ private fun CloudSyncBackupSubScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = (effectiveUserName.firstOrNull() ?: 'U').uppercase(),
+                                        text = effectiveUserName.trim().take(1).uppercase(),
                                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.onPrimary
                                     )
@@ -631,11 +626,6 @@ private fun CloudSyncBackupSubScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Text(
-                                            text = if (lang == "bn") "ব্যবহারকারী:" else "User:",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
                                         Text(
                                             text = effectiveUserName,
                                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -1001,10 +991,11 @@ private fun DedicatedReminderSubScreen(
                         )
                         Button(
                             onClick = {
+                                viewModel.sendTestReminder(isIstigfar = !isDurud)
                                 Toast.makeText(
                                     context,
-                                    if (isDurud) (if (lang == "bn") "দরূদ স্মরণিকা টেস্ট নোটিফিকেশন পাঠানো হয়েছে!" else "Darud test reminder scheduled!")
-                                    else (if (lang == "bn") "ইস্তিগফার স্মরণিকা টেস্ট নোটিফিকেশন পাঠানো হয়েছে!" else "Istigfar test reminder scheduled!"),
+                                    if (isDurud) (if (lang == "bn") "দরূদ স্মরণিকা টেস্ট নোটিফিকেশন পাঠানো হয়েছে!" else "Durud test reminder sent")
+                                    else (if (lang == "bn") "ইস্তিগফার স্মরণিকা টেস্ট নোটিফিকেশন পাঠানো হয়েছে!" else "Istigfar test reminder sent"),
                                     Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -1333,7 +1324,7 @@ private fun AuthSubScreen(
     if (showEditNameDialog) {
         AlertDialog(
             onDismissRequest = { showEditNameDialog = false },
-            title = { Text(if (lang == "bn") "ব্যবহারকারীর নাম পরিবর্তন" else "Update User Name") },
+            title = { Text(if (lang == "bn") "প্রদর্শিত নাম পরিবর্তন" else "Update Display Name") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
@@ -1431,7 +1422,7 @@ private fun AuthSubScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = (effectiveUserName.firstOrNull() ?: 'U').uppercase(),
+                                    text = effectiveUserName.trim().take(1).uppercase(),
                                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                                     color = MaterialTheme.colorScheme.onPrimary
                                 )
@@ -1442,7 +1433,7 @@ private fun AuthSubScreen(
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
                                     Text(
-                                        text = if (lang == "bn") "লগইনকৃত ব্যবহারকারী" else "AUTHENTICATED USER",
+                                        text = if (lang == "bn") "লগইন আছেন" else "SIGNED IN AS",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.Bold,
                                             letterSpacing = 0.5.sp,

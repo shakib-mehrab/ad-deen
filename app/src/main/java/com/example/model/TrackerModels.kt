@@ -7,6 +7,28 @@ data class DayPrayers(
     val maghrib: PrayerStatus = PrayerStatus.NONE,
     val isha: PrayerStatus = PrayerStatus.NONE
 ) {
+    fun statusOf(key: String): PrayerStatus? = when (key.lowercase()) {
+        "fajr" -> fajr
+        "dhuhr" -> dhuhr
+        "asr" -> asr
+        "maghrib" -> maghrib
+        "isha" -> isha
+        else -> null
+    }
+
+    /** Tap behaviour: tapping the already-selected status clears it to NONE ("Not marked"). */
+    fun withToggled(key: String, status: PrayerStatus): DayPrayers {
+        val current = statusOf(key) ?: return this
+        val target = if (current == status) PrayerStatus.NONE else status
+        return when (key.lowercase()) {
+            "fajr" -> copy(fajr = target)
+            "dhuhr" -> copy(dhuhr = target)
+            "asr" -> copy(asr = target)
+            "maghrib" -> copy(maghrib = target)
+            else -> copy(isha = target)
+        }
+    }
+
     fun toMap(): Map<String, String> = mapOf(
         "fajr" to fajr.code,
         "dhuhr" to dhuhr.code,
@@ -87,19 +109,32 @@ data class DayRecord(
     val nafl: DayNafl = DayNafl(),
     val sections: DaySections = DaySections(),
     val quran: Boolean = false,
-    val scoreVersion: Int = 2,
+    val scoreVersion: Int = CURRENT_SCORE_VERSION,
     val counters: Map<String, Int> = emptyMap(), // "<section>:<itemId>" -> count
     val score: Int = 0,
     val perfect: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis()
 ) {
+    /** Quran counts toward the score only on days recorded under the Quran rules. */
+    val isQuranApplicable: Boolean get() = scoreVersion >= CURRENT_SCORE_VERSION
+
     companion object {
+        /** v1: azkhar 3 pts each (15), no Quran. */
+        const val LEGACY_V1 = 1
+        /**
+         * v2: days recorded before Quran tracking existed (azkhar 2 pts each). Quran is "not applicable":
+         * max score stays 95 and Perfect Day does not require it, so old results and streaks are preserved.
+         */
+        const val LEGACY_NO_QURAN_VERSION = 2
+        /** v3 (current): 60 prayers + 25 nafl + 5 Quran + 10 azkhar = 100; Perfect requires Quran. */
+        const val CURRENT_SCORE_VERSION = 3
+
         fun calculateScore(
             prayers: DayPrayers,
             nafl: DayNafl,
             sections: DaySections,
             quran: Boolean = false,
-            scoreVersion: Int = 2
+            scoreVersion: Int = CURRENT_SCORE_VERSION
         ): Pair<Int, Boolean> {
             var pts = 0
             pts += prayers.fajr.points
@@ -131,9 +166,9 @@ data class DayRecord(
 
                 return Pair(pts, isPerfect)
             } else {
-                // Version 2 (new): Total 100
-                // Prayers 60, Witr 10, Tahajjud 10, Duha 5, Quran 5, 5 Azkhar sections 2 each = 10
-                if (quran) pts += 5
+                // v2/v3: Prayers 60, Witr 10, Tahajjud 10, Duha 5, Quran 5, 5 Azkhar sections 2 each = 10
+                val quranApplies = scoreVersion >= CURRENT_SCORE_VERSION
+                if (quranApplies && quran) pts += 5
 
                 if (sections.wake) pts += 2
                 if (sections.morning) pts += 2
@@ -141,16 +176,20 @@ data class DayRecord(
                 if (sections.sleep) pts += 2
                 if (sections.zikr) pts += 2
 
-                val isPerfect = (pts == 100) &&
+                val everythingElseDone =
                     prayers.fajr == PrayerStatus.JAMAT &&
                     prayers.dhuhr == PrayerStatus.JAMAT &&
                     prayers.asr == PrayerStatus.JAMAT &&
                     prayers.maghrib == PrayerStatus.JAMAT &&
                     prayers.isha == PrayerStatus.JAMAT &&
                     nafl.witr && nafl.tahajjud && nafl.duha &&
-                    quran &&
                     sections.wake && sections.morning && sections.evening && sections.sleep && sections.zikr
 
+                val isPerfect = if (quranApplies) {
+                    pts == 100 && everythingElseDone && quran
+                } else {
+                    pts == 95 && everythingElseDone
+                }
                 return Pair(pts, isPerfect)
             }
         }

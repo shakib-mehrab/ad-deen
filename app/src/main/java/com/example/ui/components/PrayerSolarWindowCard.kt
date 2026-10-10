@@ -312,7 +312,7 @@ fun HeroSolarCard(
 ) {
     val isBn = lang == "bn"
     val cal = remember(liveTime) {
-        Calendar.getInstance(TimeZone.getTimeZone("Asia/Dhaka")).apply {
+        Calendar.getInstance(TimeZone.getDefault()).apply {
             timeInMillis = liveTime
         }
     }
@@ -470,7 +470,7 @@ fun HeroSolarCard(
     }
 
     fun formatSimpleTime(millis: Long): String {
-        val c = Calendar.getInstance(TimeZone.getTimeZone("Asia/Dhaka")).apply {
+        val c = Calendar.getInstance(TimeZone.getDefault()).apply {
             timeInMillis = millis
         }
         val hour24 = c.get(Calendar.HOUR_OF_DAY)
@@ -1176,7 +1176,7 @@ fun PrayerSolarWindowCard(
 // ============================================================================
 
 private fun createMockScheduleForPhase(phase: SkyPhase): Pair<DailyPrayerSchedule, Long> {
-    val cal = Calendar.getInstance(TimeZone.getTimeZone("Asia/Dhaka")).apply {
+    val cal = Calendar.getInstance(TimeZone.getDefault()).apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)

@@ -1,0 +1,12 @@
+{
+  "name": "ad-deen-icon-generator",
+  "private": true,
+  "type": "module",
+  "description": "Regenerates every Android icon from assets/logo/ad-deen-logo.svg",
+  "scripts": {
+    "icons": "node generate-icons.mjs"
+  },
+  "dependencies": {
+    "sharp": "0.34.4"
+  }
+}
