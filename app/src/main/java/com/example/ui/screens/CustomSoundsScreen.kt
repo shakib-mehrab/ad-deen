@@ -21,6 +21,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -140,376 +142,162 @@ fun CustomSoundsAndLogoSubScreen(
         )
     )
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = if (isBn) "সাউন্ড ও ফন্ট সেটিংস" else "Sounds & Font Settings",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.testTag("custom_sounds_back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        item {
+            com.example.ui.components.ScreenTitle(
+                if (isBn) "সাউন্ড ও পড়া" else "Sounds & Reading",
+                leading = {
+                    IconButton(onClick = onBack, modifier = Modifier.testTag("custom_sounds_back_button")) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = com.example.ui.theme.AppColors.TextPrimary)
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                }
             )
         }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(androidx.compose.ui.graphics.Color.Transparent)
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            contentPadding = PaddingValues(vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Arabic Font Resizer Section
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("arabic_font_card"),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FormatSize,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Column {
-                                Text(
-                                    text = if (isBn) "আরবি ফন্ট সাইজ নিয়ন্ত্রণ" else "Arabic Font Size Control",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                )
-                                Text(
-                                    text = if (isBn) "পড়ার সুবিধার্থে ফন্ট বড় বা ছোট করুন" else "Enlarge or shrink Arabic text size",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
 
-                        // Live Arabic Preview Box
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ ۞ قُلْ هُوَ اللَّهُ أَحَدٌ",
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    fontSize = settings.arabicFontSize.sp,
-                                    lineHeight = (settings.arabicFontSize * 1.55f).sp,
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                textAlign = TextAlign.Center,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp)
-                            )
-                        }
-
-                        // Stepper / Slider
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            FilledTonalButton(
-                                onClick = { viewModel.updateArabicFontSize(settings.arabicFontSize - 2) },
-                                enabled = settings.arabicFontSize > 18
-                            ) {
-                                Text("A -  ছোট", fontWeight = FontWeight.Bold)
-                            }
-
-                            Text(
-                                text = "${settings.arabicFontSize} sp",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            FilledTonalButton(
-                                onClick = { viewModel.updateArabicFontSize(settings.arabicFontSize + 2) },
-                                enabled = settings.arabicFontSize < 42
-                            ) {
-                                Text("A +  বড়", fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Hijri Date Adjustment Section
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("hijri_adjustment_card"),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CalendarMonth,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Column {
-                                Text(
-                                    text = if (isBn) "হিজরি তারিখ সমন্বয় (চাঁদ দেখা)" else "Hijri Date Adjustment (Moon Sighting)",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                )
-                                Text(
-                                    text = if (isBn) "স্থানীয় চাঁদ দেখার ভিত্তিতে তারিখ সমন্বয় করুন" else "Fine-tune Hijri day to match local sighting",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        val cal = remember { Calendar.getInstance(TimeZone.getDefault()) }
-                        val previewHijri = CalendarDateHelper.getHijriDate(cal, isBn, settings.hijriOffset)
-
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "${previewHijri.day} ${previewHijri.monthName} ${previewHijri.year} AH (${previewHijri.dayName})",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(10.dp),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            FilledTonalButton(
-                                onClick = { viewModel.updateHijriOffset(settings.hijriOffset - 1) },
-                                enabled = settings.hijriOffset > -2
-                            ) {
-                                Text("- ১ দিন")
-                            }
-
-                            Text(
-                                text = "${if (settings.hijriOffset > 0) "+" else ""}${settings.hijriOffset} দিন",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-
-                            FilledTonalButton(
-                                onClick = { viewModel.updateHijriOffset(settings.hijriOffset + 1) },
-                                enabled = settings.hijriOffset < 2
-                            ) {
-                                Text("+ ১ দিন")
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Custom Notification Sounds Header
-            item {
-                Column(modifier = Modifier.padding(top = 4.dp)) {
+        // Arabic font size
+        item {
+            com.example.ui.components.SettingsGroup(title = if (isBn) "আরবি লেখা" else "Arabic text") {
+                com.example.ui.components.GlowCard(modifier = Modifier.fillMaxWidth().testTag("arabic_font_card"), elevation = 0.dp) {
                     Text(
-                        text = if (isBn) "কাস্টম নোটিফিকেশন ও অ্যালার্ম সাউন্ড" else "Custom Notification & Alarm Sounds",
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.primary
+                        text = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontSize = settings.arabicFontSize.sp,
+                            lineHeight = (settings.arabicFontSize * 1.6f).sp
+                        ),
+                        textAlign = TextAlign.Center,
+                        color = com.example.ui.theme.AppColors.Secondary,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Stepper(
+                        label = if (isBn) "ফন্ট সাইজ" else "Font size",
+                        value = "${settings.arabicFontSize}",
+                        canDecrease = settings.arabicFontSize > 18,
+                        canIncrease = settings.arabicFontSize < 42,
+                        onDecrease = { viewModel.updateArabicFontSize(settings.arabicFontSize - 2) },
+                        onIncrease = { viewModel.updateArabicFontSize(settings.arabicFontSize + 2) }
+                    )
+                }
+            }
+        }
+
+        // Hijri adjustment
+        item {
+            val cal = remember { Calendar.getInstance(TimeZone.getDefault()) }
+            val previewHijri = CalendarDateHelper.getHijriDate(cal, isBn, settings.hijriOffset)
+            com.example.ui.components.SettingsGroup(title = if (isBn) "হিজরি তারিখ (চাঁদ দেখা)" else "Hijri date (moon sighting)") {
+                com.example.ui.components.GlowCard(modifier = Modifier.fillMaxWidth().testTag("hijri_adjustment_card"), elevation = 0.dp) {
+                    Text(
+                        "${previewHijri.day} ${previewHijri.monthName} ${previewHijri.year} AH",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = com.example.ui.theme.AppColors.TextPrimary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        text = if (isBn)
-                            "সরাসরি আপনার ফোন থেকে যেকোনো পছন্দের আযান বা অডিও ফাইল (.mp3) যোগ করুন"
-                        else
-                            "Add any custom Adhan or audio file (.mp3) directly from your phone",
+                        if (isBn) "স্থানীয় চাঁদ দেখার সাথে মেলাতে দিন সমন্বয় করুন" else "Shift by a day to match your local sighting",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = com.example.ui.theme.AppColors.TextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Stepper(
+                        label = if (isBn) "সমন্বয়" else "Adjustment",
+                        value = "${if (settings.hijriOffset > 0) "+" else ""}${settings.hijriOffset} ${if (isBn) "দিন" else "day"}",
+                        canDecrease = settings.hijriOffset > -2,
+                        canIncrease = settings.hijriOffset < 2,
+                        onDecrease = { viewModel.updateHijriOffset(settings.hijriOffset - 1) },
+                        onIncrease = { viewModel.updateHijriOffset(settings.hijriOffset + 1) }
                     )
                 }
             }
+        }
 
-            // Sounds List
-            items(soundsList.size) { index ->
-                val item = soundsList[index]
-                val customDisplayName = settings.customSoundNames[item.soundKey]
-                val hasCustom = SoundHelper.hasCustomSound(context, item.soundKey)
-                val isCurrentlyPlaying = playingSound == item.soundKey
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("sound_card_${item.soundKey}"),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+        // Sounds
+        item {
+            com.example.ui.components.SettingsGroup(title = if (isBn) "অ্যালার্ম ও স্মরণিকা সাউন্ড" else "Alarm & reminder sounds") {
+                Text(
+                    if (isBn) "সারিতে ট্যাপ করে ফোন থেকে অডিও বেছে নিন। ▶ দিয়ে শুনুন।" else "Tap a row to choose audio from your phone. ▶ to preview.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = com.example.ui.theme.AppColors.TextSecondary,
+                    modifier = Modifier.padding(horizontal = 6.dp)
+                )
+                soundsList.forEach { item ->
+                    val customDisplayName = settings.customSoundNames[item.soundKey]
+                    val hasCustom = SoundHelper.hasCustomSound(context, item.soundKey)
+                    val isPlaying = playingSound == item.soundKey
+                    com.example.ui.components.SettingRow(
+                        title = if (isBn) item.titleBn else item.titleEn,
+                        subtitle = if (hasCustom) "✓ ${customDisplayName ?: "custom audio"}" else (if (isBn) "অ্যাপের নিজস্ব টোন" else "Built-in tone"),
+                        onClick = {
+                            activePickingSoundKey = item.soundKey
+                            audioPickerLauncher.launch("audio/*")
+                        },
+                        modifier = Modifier.testTag("sound_card_${item.soundKey}")
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (isBn) item.titleBn else item.titleEn,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = if (isBn) item.descBn else item.descEn,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        // Current Tone Status Badge
-                        Surface(
-                            color = if (hasCustom) Color(0xFFFFF0CC) else MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(8.dp),
-                            border = if (hasCustom) BorderStroke(1.dp, Color(0xFFFFB030)) else null,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (hasCustom) Icons.Default.CheckCircle else Icons.Default.NotificationsNone,
-                                    contentDescription = null,
-                                    tint = if (hasCustom) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Text(
-                                    text = if (hasCustom) {
-                                        val label = customDisplayName ?: "custom_sound.mp3"
-                                        if (isBn) "কাস্টম সাউন্ড সক্রিয়: $label" else "Custom audio active: $label"
-                                    } else {
-                                        if (isBn) "সিস্টেম ডিফল্ট নোটিফিকেশন টোন (ফলব্যাক)" else "Default system tone (Fallback)"
-                                    },
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (hasCustom) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                )
-                            }
-                        }
-
-                        // Action Buttons: Choose File, Reset, Preview
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // 1. Choose from device button
-                            Button(
-                                onClick = {
-                                    activePickingSoundKey = item.soundKey
-                                    audioPickerLauncher.launch("audio/*")
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AudioFile,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = if (isBn) "সাউন্ড যোগ করুন" else "Choose Audio",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                                )
-                            }
-
-                            // 2. Play / Preview button
-                            FilledTonalIconButton(
-                                onClick = {
-                                    if (isCurrentlyPlaying) {
-                                        currentPlayer?.stop()
-                                        currentPlayer?.release()
-                                        currentPlayer = null
-                                        playingSound = null
-                                    } else {
-                                        currentPlayer?.stop()
-                                        currentPlayer?.release()
-                                        playingSound = item.soundKey
-                                        currentPlayer = SoundHelper.playPreviewSound(context, item.soundKey) {
-                                            playingSound = null
-                                            currentPlayer = null
-                                        }
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = if (isCurrentlyPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                                    contentDescription = "Preview Tone",
-                                    tint = if (isCurrentlyPlaying) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            // 3. Reset button (if custom sound exists)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             if (hasCustom) {
                                 IconButton(
                                     onClick = {
                                         SoundHelper.removeCustomAudio(context, item.soundKey)
                                         viewModel.unregisterCustomSound(item.soundKey)
-                                        val msg = if (isBn) "ডিফল্ট টোনে রিসেট করা হয়েছে" else "Reset to default tone"
-                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    }
+                                        Toast.makeText(context, if (isBn) "ডিফল্ট টোনে রিসেট করা হয়েছে" else "Reset to built-in tone", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.size(36.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.RestartAlt,
-                                        contentDescription = "Reset to Default",
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
+                                    Icon(Icons.Default.RestartAlt, contentDescription = "Reset to default", tint = com.example.ui.theme.AppColors.TextSecondary, modifier = Modifier.size(20.dp))
                                 }
+                            }
+                            Box(
+                                Modifier.size(36.dp).clip(CircleShape).background(com.example.ui.theme.AppColors.Surface)
+                                    .clickable {
+                                        currentPlayer?.let { runCatching { it.stop(); it.release() } }
+                                        currentPlayer = null
+                                        if (isPlaying) {
+                                            playingSound = null
+                                        } else {
+                                            playingSound = item.soundKey
+                                            currentPlayer = SoundHelper.playPreviewSound(context, item.soundKey) {
+                                                playingSound = null
+                                                currentPlayer = null
+                                            }
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                    contentDescription = "Preview tone",
+                                    tint = com.example.ui.theme.AppColors.Secondary
+                                )
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** − value + control in the soft style. */
+@Composable
+private fun Stepper(label: String, value: String, canDecrease: Boolean, canIncrease: Boolean, onDecrease: () -> Unit, onIncrease: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(com.example.ui.theme.AppColors.WarmTintContainer).padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium), color = com.example.ui.theme.AppColors.TextPrimary, modifier = Modifier.weight(1f).padding(start = 10.dp))
+        IconButton(onClick = onDecrease, enabled = canDecrease) {
+            Icon(Icons.Default.Remove, contentDescription = "Decrease", tint = if (canDecrease) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.DisabledTrack)
+        }
+        Text(value, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"), color = com.example.ui.theme.AppColors.TextPrimary, modifier = Modifier.widthIn(min = 52.dp), textAlign = TextAlign.Center)
+        IconButton(onClick = onIncrease, enabled = canIncrease) {
+            Icon(Icons.Default.Add, contentDescription = "Increase", tint = if (canIncrease) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.DisabledTrack)
         }
     }
 }

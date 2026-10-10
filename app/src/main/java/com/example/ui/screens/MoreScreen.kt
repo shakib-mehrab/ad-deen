@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -28,6 +30,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -141,7 +144,7 @@ fun MoreScreen(
             }
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                contentPadding = PaddingValues(bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 item { com.example.ui.components.ScreenTitle(Strings.t("nav_more", lang)) }
@@ -409,7 +412,46 @@ private fun MoreNavCard(
     }
 }
 
-// ----------------- SUB-SCREEN: CLOUD SYNC & GOOGLE DRIVE BACKUP -----------------
+@Composable
+private fun SubScreenTitle(title: String, onBack: () -> Unit) {
+    com.example.ui.components.ScreenTitle(title, leading = {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = com.example.ui.theme.AppColors.TextPrimary)
+        }
+    })
+}
+
+/** Text field in the soft style: cream fill, rounded, brand-coloured focus. */
+@Composable
+private fun SoftTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    isPassword: Boolean = false,
+    keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        singleLine = true,
+        shape = RoundedCornerShape(14.dp),
+        visualTransformation = if (isPassword) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = com.example.ui.theme.AppColors.Action,
+            unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+            focusedContainerColor = com.example.ui.theme.AppColors.WarmTintContainer,
+            unfocusedContainerColor = com.example.ui.theme.AppColors.WarmTintContainer,
+            focusedLabelColor = com.example.ui.theme.AppColors.Action,
+            cursorColor = com.example.ui.theme.AppColors.Action
+        ),
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+// ----------------- SUB-SCREEN: CLOUD SYNC & BACKUP -----------------
 
 @Composable
 private fun CloudSyncBackupSubScreen(
@@ -420,301 +462,144 @@ private fun CloudSyncBackupSubScreen(
     onNavigateToAuth: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val bn = lang == "bn"
     val isFirebaseInitialized by viewModel.isFirebaseInitialized.collectAsState()
-    val firebaseStatus by viewModel.firebaseStatus.collectAsState()
     val lastSyncTime by viewModel.lastSyncTime.collectAsState()
+    val syncError by viewModel.syncError.collectAsState()
 
     var isSyncing by remember { mutableStateOf(false) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
 
-    // SAF Create Document Launcher (allows user to select Google Drive folder or local storage)
-    val createDocLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri: Uri? ->
+    val createDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri != null) {
             viewModel.writeBackupToUri(uri) { success, err ->
-                if (success) {
-                    Toast.makeText(context, if (lang == "bn") "ব্যাকআপ সফলভাবে সেভ হয়েছে!" else "Backup saved successfully!", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(context, err ?: "Error saving backup", Toast.LENGTH_LONG).show()
-                }
+                Toast.makeText(context, if (success) (if (bn) "ব্যাকআপ সফলভাবে সেভ হয়েছে" else "Backup saved") else (err ?: "Error saving backup"), Toast.LENGTH_LONG).show()
             }
         }
     }
-
-    // SAF Open Document Launcher (allows user to pick a backup file from Google Drive or local storage)
-    val openDocLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
+    val openDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
             viewModel.restoreBackupFromUri(uri) { success, daysCount, err ->
-                if (success) {
-                    Toast.makeText(
-                        context,
-                        if (lang == "bn") "$daysCount দিনের আমল সফলভাবে রিস্টোর হয়েছে!" else "Successfully restored $daysCount days of worship records!",
-                        Toast.LENGTH_LONG
-                    ).show()
-                } else {
-                    Toast.makeText(context, err ?: "Error restoring backup", Toast.LENGTH_LONG).show()
-                }
+                Toast.makeText(
+                    context,
+                    if (success) (if (bn) "$daysCount দিনের আমল রিস্টোর হয়েছে" else "Restored $daysCount days of records") else (err ?: "Error restoring backup"),
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
 
-    val lastSyncStr = if (lastSyncTime > 0) {
-        SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US).format(Date(lastSyncTime))
-    } else {
-        Strings.t("never_synced", lang)
-    }
+    val lastSyncStr = if (lastSyncTime > 0) SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.US).format(Date(lastSyncTime)) else Strings.t("never_synced", lang)
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color.Transparent)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                }
-                Text(
-                    text = Strings.t("cloud_sync", lang),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                )
-            }
-        }
+        item { SubScreenTitle(Strings.t("cloud_sync", lang), onBack) }
 
-        // Cloud Status Banner
+        // Status card
         item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isFirebaseInitialized) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            com.example.ui.components.GlowCard(modifier = Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    com.example.ui.components.SoftTile(Modifier.size(46.dp), RoundedCornerShape(14.dp)) {
                         Icon(
-                            imageVector = if (isFirebaseInitialized) Icons.Default.CloudDone else Icons.Default.CloudQueue,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = if (isFirebaseInitialized) Strings.t("firebase_connected", lang) else Strings.t("local_mode_notice", lang),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
+                            if (currentUser != null && isFirebaseInitialized) Icons.Default.CloudDone else Icons.Default.CloudQueue,
+                            null,
+                            tint = com.example.ui.theme.AppColors.Secondary,
+                            modifier = Modifier.align(Alignment.Center)
                         )
                     }
-
-                    if (currentUser != null) {
-                        val effectiveUserName = currentUser.effectiveName
-                        Surface(
-                            color = MaterialTheme.colorScheme.surface,
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-                            modifier = Modifier.fillMaxWidth().testTag("backup_user_status_card")
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(
-                                            Brush.linearGradient(
-                                                listOf(
-                                                    MaterialTheme.colorScheme.primary,
-                                                    MaterialTheme.colorScheme.secondary
-                                                )
-                                            ),
-                                            CircleShape
-                                        ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = effectiveUserName.trim().take(1).uppercase(),
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
-                                Column {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = effectiveUserName,
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.testTag("backup_user_name_text")
-                                        )
-                                    }
-                                    Text(
-                                        text = currentUser.email,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (currentUser != null) (if (bn) "ক্লাউড সিঙ্ক চালু" else "Cloud sync is on") else (if (bn) "শুধু এই ফোনে সংরক্ষিত" else "Saved on this phone only"),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = com.example.ui.theme.AppColors.TextPrimary
+                        )
+                        Text("${Strings.t("last_synced", lang)} $lastSyncStr", style = MaterialTheme.typography.bodySmall, color = com.example.ui.theme.AppColors.TextSecondary)
+                    }
+                }
+                if (currentUser != null) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(com.example.ui.theme.AppColors.WarmTintContainer)
+                            .padding(10.dp).testTag("backup_user_status_card"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        com.example.ui.components.UserAvatar(currentUser.effectiveName, size = 34.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(currentUser.effectiveName, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold), color = com.example.ui.theme.AppColors.TextPrimary, maxLines = 1, modifier = Modifier.testTag("backup_user_name_text"))
+                            Text(currentUser.email, style = MaterialTheme.typography.bodySmall, color = com.example.ui.theme.AppColors.TextSecondary, maxLines = 1)
                         }
                     }
-
+                }
+                (syncMessage ?: syncError)?.let {
+                    Spacer(Modifier.height(10.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = if (syncMessage != null) com.example.ui.theme.AppColors.Secondary else MaterialTheme.colorScheme.error)
+                }
+                Spacer(Modifier.height(14.dp))
+                if (currentUser != null) {
+                    com.example.ui.components.PrimaryPillButton(
+                        text = if (isSyncing) (if (bn) "সিঙ্ক হচ্ছে…" else "Syncing…") else Strings.t("sync_now", lang),
+                        enabled = !isSyncing,
+                        modifier = Modifier.fillMaxWidth().testTag("sync_now_button")
+                    ) {
+                        isSyncing = true
+                        syncMessage = null
+                        viewModel.syncAllToCloud { success, count, err ->
+                            isSyncing = false
+                            syncMessage = if (success) (if (bn) "$count দিনের রেকর্ড সিঙ্ক হয়েছে" else "Synced $count days of records") else (err ?: "Sync failed")
+                        }
+                    }
+                } else {
                     Text(
-                        text = "${Strings.t("last_synced", lang)} $lastSyncStr",
+                        if (bn) "সব ডিভাইসে আমল সিঙ্ক করতে সাইন ইন করুন।" else "Sign in to keep your amal synced across devices.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = com.example.ui.theme.AppColors.TextSecondary
                     )
-
-                    if (currentUser != null) {
-                        Button(
-                            onClick = {
-                                isSyncing = true
-                                syncMessage = null
-                                viewModel.syncAllToCloud { success, count, err ->
-                                    isSyncing = false
-                                    if (success) {
-                                        syncMessage = if (lang == "bn") "$count দিনের নামাজের হিস্ট্রি ও আমল ক্লাউডে সিঙ্ক হয়েছে!" else "Successfully synced $count days of prayer history with Firebase Cloud!"
-                                    } else {
-                                        syncMessage = err ?: "Sync failed"
-                                    }
-                                }
-                            },
-                            enabled = !isSyncing,
-                            modifier = Modifier.fillMaxWidth().testTag("sync_now_button")
-                        ) {
-                            if (isSyncing) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
-                                Spacer(Modifier.width(8.dp))
-                            }
-                            Icon(Icons.Default.Sync, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(Strings.t("sync_now", lang))
-                        }
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = if (lang == "bn") "নামাজের হিস্ট্রি ক্লাউডে সিঙ্ক ও ব্যাকআপ করতে সাইন ইন করুন।" else "Sign in with your registered account to backup & sync prayer history across devices.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Button(
-                                onClick = onNavigateToAuth,
-                                modifier = Modifier.fillMaxWidth().testTag("backup_sign_in_button")
-                            ) {
-                                Icon(Icons.Default.Login, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(Strings.t("sign_in", lang))
-                            }
-                        }
-                    }
-
-                    if (syncMessage != null) {
-                        Text(
-                            text = syncMessage ?: "",
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Spacer(Modifier.height(10.dp))
+                    com.example.ui.components.PrimaryPillButton(
+                        text = Strings.t("sign_in", lang),
+                        modifier = Modifier.fillMaxWidth().testTag("backup_sign_in_button"),
+                        onClick = onNavigateToAuth
+                    )
                 }
             }
         }
 
-        // Google Drive / Share Backup Card
         item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text(
-                            text = Strings.t("backup_google_drive", lang),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
-
-                    Text(
-                        text = Strings.t("backup_desc", lang),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    // Option 1: Share sheet (has Google Drive "Save to Drive" directly)
-                    Button(
-                        onClick = {
-                            viewModel.exportBackupFile { file ->
-                                if (file != null) {
-                                    val shareIntent = BackupManager.createShareIntent(context, file)
-                                    context.startActivity(Intent.createChooser(shareIntent, "Save to Google Drive / Share"))
-                                } else {
-                                    Toast.makeText(context, "Could not generate backup", Toast.LENGTH_SHORT).show()
-                                }
+            com.example.ui.components.SettingsGroup(title = if (bn) "ব্যাকআপ ফাইল" else "Backup file") {
+                com.example.ui.components.SettingValueRow(
+                    title = Strings.t("share_backup", lang),
+                    value = null,
+                    subtitle = if (bn) "গুগল ড্রাইভ বা অন্য অ্যাপে শেয়ার করুন" else "Save to Google Drive or another app",
+                    icon = Icons.Default.Share,
+                    onClick = {
+                        viewModel.exportBackupFile { file ->
+                            if (file != null) {
+                                context.startActivity(Intent.createChooser(BackupManager.createShareIntent(context, file), "Save backup"))
+                            } else {
+                                Toast.makeText(context, "Could not generate backup", Toast.LENGTH_SHORT).show()
                             }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(Strings.t("share_backup", lang))
+                        }
                     }
-
-                    // Option 2: File Picker (SAF - user selects Google Drive folder or Storage)
-                    OutlinedButton(
-                        onClick = {
-                            val defaultName = "AdDin_Backup_${SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())}.json"
-                            createDocLauncher.launch(defaultName)
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.SaveAlt, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(Strings.t("save_file", lang))
-                    }
-                }
-            }
-        }
-
-        // Restore Backup Card
-        item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-                        Text(
-                            text = Strings.t("restore_backup", lang),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
-
-                    Text(
-                        text = Strings.t("restore_desc", lang),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Button(
-                        onClick = {
-                            openDocLauncher.launch(arrayOf("application/json", "*/*"))
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(Strings.t("restore_backup", lang))
-                    }
-                }
+                )
+                com.example.ui.components.SettingValueRow(
+                    title = Strings.t("save_file", lang),
+                    value = null,
+                    subtitle = if (bn) "ফোনের স্টোরেজে একটি .json ফাইল" else "A .json file on your phone",
+                    icon = Icons.Default.SaveAlt,
+                    onClick = { createDocLauncher.launch("AdDeen_Backup_${SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())}.json") }
+                )
+                com.example.ui.components.SettingValueRow(
+                    title = Strings.t("restore_backup", lang),
+                    value = null,
+                    subtitle = Strings.t("restore_desc", lang),
+                    icon = Icons.Default.Restore,
+                    onClick = { openDocLauncher.launch(arrayOf("application/json", "*/*")) }
+                )
             }
         }
     }
@@ -758,7 +643,7 @@ private fun DedicatedReminderSubScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         item {
@@ -852,14 +737,26 @@ private fun QuranBrowserSubScreen(
     lang: String,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
+    val bn = lang == "bn"
+    val uiPrefs = remember { com.example.data.UiPrefs(context) }
     var webView: WebView? by remember { mutableStateOf(null) }
     var currentUrl by remember { mutableStateOf("https://quran.com") }
+    var customSites by remember { mutableStateOf(uiPrefs.quranSites) }
+    var showAddSite by remember { mutableStateOf(false) }
+    var showReminder by remember { mutableStateOf(true) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color.Transparent)
-    ) {
+    val builtIn = listOf(
+        com.example.data.QuranSite("Quran.com", "https://quran.com"),
+        com.example.data.QuranSite("Quran.gov.bd", "https://quran.gov.bd"),
+        com.example.data.QuranSite("QuraanShareef", "https://quraanshareef.org")
+    )
+    fun open(url: String) {
+        currentUrl = url
+        webView?.loadUrl(url)
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(bottom = com.example.ui.components.LocalBottomBarSpace.current)) {
         // Browser Controls Bar
         Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 3.dp) {
             Column(modifier = Modifier.padding(8.dp)) {
@@ -869,20 +766,15 @@ private fun QuranBrowserSubScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.Default.Close, contentDescription = "Close")
-                        }
+                        IconButton(onClick = onBack) { Icon(Icons.Default.Close, contentDescription = "Close") }
                         IconButton(onClick = { if (webView?.canGoBack() == true) webView?.goBack() }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                         IconButton(onClick = { if (webView?.canGoForward() == true) webView?.goForward() }) {
-                            Icon(Icons.Default.ArrowForward, contentDescription = "Forward")
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Forward")
                         }
-                        IconButton(onClick = { webView?.reload() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Reload")
-                        }
+                        IconButton(onClick = { webView?.reload() }) { Icon(Icons.Default.Refresh, contentDescription = "Reload") }
                     }
-
                     Text(
                         text = Strings.t("quran_browser", lang),
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
@@ -890,35 +782,59 @@ private fun QuranBrowserSubScreen(
                     )
                 }
 
-                // Quick Switch Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    FilterChip(
-                        selected = currentUrl.contains("quran.com"),
-                        onClick = {
-                            currentUrl = "https://quran.com"
-                            webView?.loadUrl("https://quran.com")
-                        },
-                        label = { Text("Quran.com") }
-                    )
-                    FilterChip(
-                        selected = currentUrl.contains("quran.gov.bd"),
-                        onClick = {
-                            currentUrl = "https://quran.gov.bd"
-                            webView?.loadUrl("https://quran.gov.bd")
-                        },
-                        label = { Text("Quran.gov.bd") }
-                    )
-                    FilterChip(
-                        selected = currentUrl.contains("quraanshareef.org"),
-                        onClick = {
-                            currentUrl = "https://quraanshareef.org"
-                            webView?.loadUrl("https://quraanshareef.org")
-                        },
-                        label = { Text("QuraanShareef") }
-                    )
+                // Quick switch: built-in sites, user-added sites (removable), and "+ Add site"
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(builtIn.size) { i ->
+                        val site = builtIn[i]
+                        FilterChip(selected = currentUrl == site.url, onClick = { open(site.url) }, label = { Text(site.name) })
+                    }
+                    items(customSites.size) { i ->
+                        val site = customSites[i]
+                        FilterChip(
+                            selected = currentUrl == site.url,
+                            onClick = { open(site.url) },
+                            label = { Text(site.name, maxLines = 1) },
+                            trailingIcon = {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = if (bn) "মুছুন" else "Remove",
+                                    modifier = Modifier.size(16.dp).clickable {
+                                        customSites = customSites - site
+                                        uiPrefs.quranSites = customSites
+                                    }
+                                )
+                            }
+                        )
+                    }
+                    item {
+                        AssistChip(
+                            onClick = { showAddSite = true },
+                            label = { Text(if (bn) "সাইট যোগ করুন" else "Add site") },
+                            leadingIcon = { Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp)) },
+                            modifier = Modifier.testTag("quran_add_site")
+                        )
+                    }
+                }
+            }
+        }
+
+        // Gentle reminder: the physical Mushaf comes first.
+        if (showReminder) {
+            Row(
+                Modifier.fillMaxWidth().background(com.example.ui.theme.AppColors.WarmTintContainer).padding(start = 14.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Outlined.MenuBook, null, tint = com.example.ui.theme.AppColors.Secondary, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    if (bn) "সম্ভব হলে মুসহাফ (ছাপা কুরআন) হাতে নিয়ে তিলাওয়াত করুন — ফোন শুধু সহায়ক হিসেবে ব্যবহার করুন।"
+                    else "Whenever you can, read from a physical Mushaf. Use the screen only as a helper.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = com.example.ui.theme.AppColors.TextPrimary,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { showReminder = false }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = com.example.ui.theme.AppColors.TextSecondary, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -934,10 +850,44 @@ private fun QuranBrowserSubScreen(
                     webView = this
                 }
             },
-            update = { view ->
-                webView = view
-            }
+            update = { view -> webView = view }
         )
+    }
+
+    if (showAddSite) {
+        var name by remember { mutableStateOf("") }
+        var url by remember { mutableStateOf("") }
+        var error by remember { mutableStateOf<String?>(null) }
+        com.example.ui.components.SoftSheet(
+            title = if (bn) "নতুন ওয়েবসাইট" else "Add a website",
+            onDismiss = { showAddSite = false },
+            cancelText = Strings.t("cancel", lang),
+            confirmText = Strings.t("save", lang),
+            onConfirm = {
+                val clean = com.example.data.UiPrefs.normaliseUrl(url)
+                when {
+                    clean == null -> error = if (bn) "সঠিক ওয়েব ঠিকানা লিখুন (যেমন quran.example.com)" else "Enter a valid web address (e.g. quran.example.com)"
+                    customSites.any { it.url == clean } || builtIn.any { it.url == clean } -> error = if (bn) "এই সাইট আগেই আছে" else "This site is already in the list"
+                    else -> {
+                        val label = name.trim().ifBlank { android.net.Uri.parse(clean).host.orEmpty().removePrefix("www.") }
+                        customSites = customSites + com.example.data.QuranSite(label.take(24), clean)
+                        uiPrefs.quranSites = customSites
+                        showAddSite = false
+                        open(clean)
+                    }
+                }
+            }
+        ) {
+            Text(
+                if (bn) "আপনার পছন্দের কুরআন ওয়েবসাইট যোগ করুন। তবুও আমরা মুসহাফ হাতে নিয়ে পড়তে উৎসাহিত করি।"
+                else "Add a Quran website you trust. We still encourage reading from a physical Mushaf whenever possible.",
+                style = MaterialTheme.typography.bodySmall,
+                color = com.example.ui.theme.AppColors.TextSecondary
+            )
+            SoftTextField(name, { name = it }, if (bn) "নাম (ঐচ্ছিক)" else "Name (optional)")
+            SoftTextField(url, { url = it; error = null }, if (bn) "ওয়েব ঠিকানা" else "Web address", keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri)
+            error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        }
     }
 }
 
@@ -951,162 +901,66 @@ private fun SettingsSubScreen(
     onShowBatteryPrompt: () -> Unit
 ) {
     val settings by viewModel.settings.collectAsState()
-
+    val bn = lang == "bn"
     var showDistrictDialog by remember { mutableStateOf(false) }
+    var showMethodSheet by remember { mutableStateOf(false) }
+    var gpsBusy by remember { mutableStateOf(false) }
+    val method = CalculationMethod.fromId(settings.calcMethod)
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color.Transparent)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
+        item { SubScreenTitle(Strings.t("settings", lang), onBack) }
+
         item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+            com.example.ui.components.SettingsGroup(title = Strings.t("language", lang)) {
+                listOf("en" to "English", "bn" to "বাংলা").forEach { (code, label) ->
+                    com.example.ui.components.SettingRow(title = label, onClick = { viewModel.updateLanguage(code) }) {
+                        RadioButton(selected = settings.language == code, onClick = null)
+                    }
                 }
-                Text(
-                    text = Strings.t("settings", lang),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            }
+        }
+
+        item {
+            com.example.ui.components.SettingsGroup(title = if (bn) "নামাজের সময়" else "Prayer times") {
+                com.example.ui.components.SettingValueRow(
+                    title = Strings.t("location", lang),
+                    value = settings.district,
+                    subtitle = "${String.format(Locale.US, "%.3f", settings.lat)}, ${String.format(Locale.US, "%.3f", settings.lng)}",
+                    icon = Icons.Outlined.Place,
+                    onClick = { showDistrictDialog = true }
+                )
+                com.example.ui.components.SettingRow(
+                    title = Strings.t("gps_mode", lang),
+                    subtitle = if (gpsBusy) (if (bn) "অবস্থান খোঁজা হচ্ছে…" else "Finding your location…") else (if (bn) "বর্তমান অবস্থান থেকে সময় নির্ধারণ" else "Use your current location"),
+                    icon = Icons.Default.MyLocation,
+                    onClick = {
+                        gpsBusy = true
+                        viewModel.requestGpsLocation { gpsBusy = false }
+                    }
+                )
+                com.example.ui.components.SettingValueRow(
+                    title = Strings.t("calc_method_label", lang),
+                    value = method.id,
+                    subtitle = if (bn) method.titleBn else method.titleEn,
+                    icon = Icons.Outlined.Calculate,
+                    onClick = { showMethodSheet = true }
                 )
             }
         }
 
-        // Language Selection
         item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = Strings.t("language", lang),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        FilterChip(
-                            selected = settings.language == "en",
-                            onClick = { viewModel.updateLanguage("en") },
-                            label = { Text("English") },
-                            modifier = Modifier.weight(1f)
-                        )
-                        FilterChip(
-                            selected = settings.language == "bn",
-                            onClick = { viewModel.updateLanguage("bn") },
-                            label = { Text("বাংলা (Bangla)") },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Calculation Method
-        item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = Strings.t("calc_method_label", lang),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-
-                    CalculationMethod.entries.forEach { method ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { viewModel.updateCalculationMethod(method.id) }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = settings.calcMethod.equals(method.id, ignoreCase = true),
-                                onClick = { viewModel.updateCalculationMethod(method.id) }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = if (lang == "bn") method.titleBn else method.titleEn,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
-                                )
-                                Text(
-                                    text = "Fajr: ${method.fajrAngle}° • Asr: Hanafi (Shadow 2)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Location & 64 Districts Selector
-        item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = Strings.t("location_mode", lang),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = "${settings.district} (${String.format(Locale.US, "%.3f", settings.lat)}, ${String.format(Locale.US, "%.3f", settings.lng)})",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = { showDistrictDialog = true },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(Strings.t("district_mode", lang), style = MaterialTheme.typography.labelSmall)
-                        }
-                        OutlinedButton(
-                            onClick = { viewModel.requestGpsLocation { } },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(Strings.t("gps_mode", lang), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Battery Optimization
-        item {
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = Strings.t("battery_optimization", lang),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = Strings.t("battery_opt_desc", lang),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Button(onClick = onShowBatteryPrompt, modifier = Modifier.fillMaxWidth()) {
-                        Text(if (lang == "bn") "অনুমতি যাচাই করুন" else "Check / Allow Background Execution")
-                    }
-                }
+            com.example.ui.components.SettingsGroup(title = if (bn) "পটভূমি" else "Background") {
+                com.example.ui.components.SettingValueRow(
+                    title = Strings.t("battery_optimization", lang),
+                    value = null,
+                    subtitle = Strings.t("battery_opt_desc", lang),
+                    icon = Icons.Outlined.BatteryChargingFull,
+                    onClick = onShowBatteryPrompt
+                )
             }
         }
     }
@@ -1121,12 +975,25 @@ private fun SettingsSubScreen(
                 viewModel.selectDistrict(it)
                 showDistrictDialog = false
             },
-            onGpsSelect = {
-                viewModel.requestGpsLocation { success ->
-                    if (success) showDistrictDialog = false
+            onGpsSelect = { viewModel.requestGpsLocation { success -> if (success) showDistrictDialog = false } }
+        )
+    }
+
+    if (showMethodSheet) {
+        com.example.ui.components.SoftSheet(title = Strings.t("calc_method_label", lang), onDismiss = { showMethodSheet = false }) {
+            CalculationMethod.entries.forEach { m ->
+                com.example.ui.components.SettingRow(
+                    title = if (bn) m.titleBn else m.titleEn,
+                    subtitle = "Fajr ${m.fajrAngle}° • Hanafi Asr",
+                    onClick = {
+                        viewModel.updateCalculationMethod(m.id)
+                        showMethodSheet = false
+                    }
+                ) {
+                    RadioButton(selected = settings.calcMethod.equals(m.id, ignoreCase = true), onClick = null)
                 }
             }
-        )
+        }
     }
 }
 
@@ -1140,6 +1007,7 @@ private fun AuthSubScreen(
     onBack: () -> Unit,
     onNavigateToBackup: () -> Unit
 ) {
+    val bn = lang == "bn"
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
@@ -1148,300 +1016,125 @@ private fun AuthSubScreen(
     var successMsg by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
-    var showEditNameDialog by remember { mutableStateOf(false) }
+    var showEditName by remember { mutableStateOf(false) }
     var editNameText by remember(currentUser) { mutableStateOf(currentUser?.displayName ?: "") }
-    var editNameLoading by remember { mutableStateOf(false) }
     var editNameError by remember { mutableStateOf<String?>(null) }
-
-    if (showEditNameDialog) {
-        AlertDialog(
-            onDismissRequest = { showEditNameDialog = false },
-            title = { Text(if (lang == "bn") "প্রদর্শিত নাম পরিবর্তন" else "Update Display Name") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = editNameText,
-                        onValueChange = { editNameText = it },
-                        label = { Text(if (lang == "bn") "আপনার নাম" else "Your Name") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().testTag("edit_name_textfield")
-                    )
-                    if (editNameError != null) {
-                        Text(
-                            text = editNameError ?: "",
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (editNameText.isNotBlank()) {
-                            editNameLoading = true
-                            editNameError = null
-                            viewModel.updateUserName(editNameText) { success, err ->
-                                editNameLoading = false
-                                if (success) {
-                                    showEditNameDialog = false
-                                } else {
-                                    editNameError = err
-                                }
-                            }
-                        }
-                    },
-                    enabled = editNameText.isNotBlank() && !editNameLoading,
-                    modifier = Modifier.testTag("save_name_button")
-                ) {
-                    Text(if (lang == "bn") "সংরক্ষণ" else "Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditNameDialog = false }) {
-                    Text(if (lang == "bn") "বাতিল" else "Cancel")
-                }
-            }
-        )
-    }
+    var editNameLoading by remember { mutableStateOf(false) }
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color.Transparent)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+        contentPadding = PaddingValues(bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                }
-                Text(
-                    text = Strings.t("account", lang),
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-                )
-            }
-        }
+        item { SubScreenTitle(Strings.t("account", lang), onBack) }
 
         if (currentUser != null) {
-            val effectiveUserName = currentUser.effectiveName
-            // Already Signed In
             item {
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
-                    modifier = Modifier.fillMaxWidth().testTag("authenticated_user_profile_card")
-                ) {
-                    Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                com.example.ui.components.GlowCard(modifier = Modifier.fillMaxWidth().testTag("authenticated_user_profile_card")) {
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        com.example.ui.components.UserAvatar(currentUser.effectiveName, size = 64.dp)
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            currentUser.effectiveName,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = com.example.ui.theme.AppColors.TextPrimary,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("authenticated_user_name_text")
+                        )
+                        Text(currentUser.email, style = MaterialTheme.typography.bodyMedium, color = com.example.ui.theme.AppColors.TextSecondary, maxLines = 1)
+                        Spacer(Modifier.height(10.dp))
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            Modifier.clip(RoundedCornerShape(12.dp)).background(com.example.ui.theme.AppColors.WarmTintContainer).padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(56.dp)
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(
-                                                MaterialTheme.colorScheme.primary,
-                                                MaterialTheme.colorScheme.secondary
-                                            )
-                                        ),
-                                        CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = effectiveUserName.trim().take(1).uppercase(),
-                                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        text = if (lang == "bn") "লগইন আছেন" else "SIGNED IN AS",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            letterSpacing = 0.5.sp,
-                                            fontSize = 9.sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    text = effectiveUserName,
-                                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.testTag("authenticated_user_name_text")
-                                )
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = currentUser.email,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (currentUser.isCloudConnected) Icons.Default.CloudDone else Icons.Default.CloudQueue,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = if (currentUser.isCloudConnected) (if (lang == "bn") "ক্লাউড সিঙ্ক সক্রিয়" else "Firebase Cloud Sync Active") else Strings.t("guest_mode", lang),
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                editNameText = currentUser.displayName
-                                showEditNameDialog = true
-                            },
-                            modifier = Modifier.fillMaxWidth().testTag("edit_name_button")
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(if (lang == "bn") "নাম পরিবর্তন করুন" else "Edit User Name")
-                        }
-
-                        Button(
-                            onClick = onNavigateToBackup,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.CloudSync, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(Strings.t("cloud_sync", lang))
-                        }
-
-                        OutlinedButton(
-                            onClick = { viewModel.signOut() },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(Strings.t("sign_out", lang))
+                            Icon(Icons.Default.CloudDone, null, tint = com.example.ui.theme.AppColors.Secondary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (bn) "ক্লাউড সিঙ্ক চালু" else "Cloud sync on", style = MaterialTheme.typography.labelMedium, color = com.example.ui.theme.AppColors.Secondary)
                         }
                     }
+                }
+            }
+            item {
+                com.example.ui.components.SettingsGroup {
+                    com.example.ui.components.SettingValueRow(
+                        title = if (bn) "নাম পরিবর্তন" else "Edit display name",
+                        value = currentUser.displayName.ifBlank { null },
+                        icon = Icons.Default.Edit,
+                        onClick = {
+                            editNameText = currentUser.displayName
+                            editNameError = null
+                            showEditName = true
+                        },
+                        modifier = Modifier.testTag("edit_name_button")
+                    )
+                    com.example.ui.components.SettingValueRow(
+                        title = Strings.t("cloud_sync", lang),
+                        value = null,
+                        icon = Icons.Default.CloudSync,
+                        onClick = onNavigateToBackup
+                    )
+                    com.example.ui.components.SettingValueRow(
+                        title = Strings.t("sign_out", lang),
+                        value = null,
+                        icon = Icons.AutoMirrored.Filled.Logout,
+                        onClick = { viewModel.signOut() }
+                    )
                 }
             }
         } else {
-            // Sign in / Registration Form
             item {
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = if (isRegisterMode) (if (lang == "bn") "নতুন অ্যাকাউন্ট নিবন্ধন" else "Create New Account")
-                            else (if (lang == "bn") "লগইন করুন" else "Sign In"),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    com.example.ui.components.AdDeenLogo(size = 64.dp)
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        if (isRegisterMode) (if (bn) "নতুন অ্যাকাউন্ট" else "Create your account") else (if (bn) "আবার স্বাগতম" else "Welcome back"),
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = com.example.ui.theme.AppColors.TextPrimary
+                    )
+                    Text(
+                        if (bn) "সাইন ইন করলে আপনার আমল সব ডিভাইসে সিঙ্ক থাকবে" else "Sign in to keep your amal synced across devices",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = com.example.ui.theme.AppColors.TextSecondary,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            item {
+                com.example.ui.components.GlowCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (isRegisterMode) {
-                            OutlinedTextField(
-                                value = displayName,
-                                onValueChange = { displayName = it },
-                                label = { Text(if (lang == "bn") "নাম" else "Display Name") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+                            SoftTextField(displayName, { displayName = it }, if (bn) "নাম" else "Display name")
                         }
-
-                        OutlinedTextField(
-                            value = email,
-                            onValueChange = { email = it },
-                            label = { Text(if (lang == "bn") "ইমেইল" else "Email") },
-                            singleLine = true,
+                        SoftTextField(email, { email = it }, if (bn) "ইমেইল" else "Email", keyboardType = androidx.compose.ui.text.input.KeyboardType.Email)
+                        SoftTextField(password, { password = it }, if (bn) "পাসওয়ার্ড" else "Password", isPassword = true, keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
+                        errorMsg?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                        successMsg?.let { Text(it, color = com.example.ui.theme.AppColors.Secondary, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)) }
+                        Spacer(Modifier.height(4.dp))
+                        com.example.ui.components.PrimaryPillButton(
+                            text = when {
+                                loading -> if (bn) "অপেক্ষা করুন…" else "Please wait…"
+                                isRegisterMode -> if (bn) "নিবন্ধন সম্পন্ন করুন" else "Create account"
+                                else -> if (bn) "সাইন ইন" else "Sign in"
+                            },
+                            enabled = !loading && email.isNotBlank() && password.isNotBlank(),
                             modifier = Modifier.fillMaxWidth()
-                        )
-
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { password = it },
-                            label = { Text(if (lang == "bn") "পাসওয়ার্ড" else "Password") },
-                            singleLine = true,
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        if (errorMsg != null) {
-                            Text(
-                                text = errorMsg ?: "",
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-
-                        if (successMsg != null) {
-                            Text(
-                                text = successMsg ?: "",
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-
-                        if (loading) {
-                            Box(modifier = Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator()
-                            }
-                        } else {
-                            Button(
-                                onClick = {
-                                    if (email.isNotBlank() && password.isNotBlank()) {
-                                        loading = true
-                                        errorMsg = null
-                                        successMsg = null
-                                        if (isRegisterMode) {
-                                            viewModel.registerWithEmail(email, password, displayName) { success, err ->
-                                                loading = false
-                                                if (success) {
-                                                    successMsg = if (lang == "bn") "অ্যাকাউন্ট তৈরি হয়েছে এবং ক্লাউড সিঙ্ক চালু হয়েছে!" else "Account created and cloud sync enabled!"
-                                                } else {
-                                                    errorMsg = err
-                                                }
-                                            }
-                                        } else {
-                                            viewModel.signInWithEmail(email, password) { success, err ->
-                                                loading = false
-                                                if (success) {
-                                                    successMsg = if (lang == "bn") "লগইন সম্পন্ন হয়েছে এবং নামাজের হিস্ট্রি সিঙ্ক হয়েছে!" else "Signed in successfully! Prayer history synced from cloud."
-                                                } else {
-                                                    errorMsg = err
-                                                }
-                                            }
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = email.isNotBlank() && password.isNotBlank()
-                            ) {
-                                Text(if (isRegisterMode) (if (lang == "bn") "নিবন্ধন সম্পন্ন করুন" else "Complete Registration") else Strings.t("sign_in", lang))
+                        ) {
+                            loading = true
+                            errorMsg = null
+                            successMsg = null
+                            if (isRegisterMode) {
+                                viewModel.registerWithEmail(email, password, displayName) { success, err ->
+                                    loading = false
+                                    if (success) successMsg = if (bn) "অ্যাকাউন্ট তৈরি হয়েছে, ক্লাউড সিঙ্ক চালু।" else "Account created. Cloud sync is on." else errorMsg = err
+                                }
+                            } else {
+                                viewModel.signInWithEmail(email, password) { success, err ->
+                                    loading = false
+                                    if (success) successMsg = if (bn) "সাইন ইন সম্পন্ন, আমল সিঙ্ক হয়েছে।" else "Signed in. Your amal is synced." else errorMsg = err
+                                }
                             }
                         }
-
                         TextButton(
                             onClick = {
                                 isRegisterMode = !isRegisterMode
@@ -1451,13 +1144,36 @@ private fun AuthSubScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = if (isRegisterMode) (if (lang == "bn") "পূর্বে অ্যাকাউন্ট থাকলে লগইন করুন" else "Already have an account? Sign In")
-                                else (if (lang == "bn") "অ্যাকাউন্ট নেই? নতুন অ্যাকাউন্ট তৈরি করুন" else "Don't have an account? Register")
+                                if (isRegisterMode) (if (bn) "অ্যাকাউন্ট আছে? সাইন ইন করুন" else "Already have an account? Sign in")
+                                else (if (bn) "অ্যাকাউন্ট নেই? নতুন অ্যাকাউন্ট তৈরি করুন" else "New here? Create an account"),
+                                color = com.example.ui.theme.AppColors.Secondary
                             )
                         }
                     }
                 }
             }
+        }
+    }
+
+    if (showEditName && currentUser != null) {
+        com.example.ui.components.SoftSheet(
+            title = if (bn) "প্রদর্শিত নাম" else "Display name",
+            onDismiss = { showEditName = false },
+            cancelText = Strings.t("cancel", lang),
+            confirmText = if (editNameLoading) (if (bn) "সংরক্ষণ হচ্ছে…" else "Saving…") else Strings.t("save", lang),
+            onConfirm = {
+                if (editNameText.isNotBlank() && !editNameLoading) {
+                    editNameLoading = true
+                    editNameError = null
+                    viewModel.updateUserName(editNameText) { success, err ->
+                        editNameLoading = false
+                        if (success) showEditName = false else editNameError = err
+                    }
+                }
+            }
+        ) {
+            SoftTextField(editNameText, { editNameText = it }, if (bn) "আপনার নাম" else "Your name", modifier = Modifier.testTag("edit_name_textfield"))
+            editNameError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }

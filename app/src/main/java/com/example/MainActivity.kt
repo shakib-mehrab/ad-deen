@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -170,34 +171,32 @@ private fun MainScaffold(
         if (moreInitialSubScreen != null) navController.navigateTab("more")
     }
 
-    Box(Modifier.fillMaxSize().background(AppColors.BackgroundBrush)) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = Color.Transparent,
-            contentWindowInsets = WindowInsets.safeDrawing,
-            snackbarHost = {
-                SnackbarHost(snackbarHostState) { data ->
-                    Snackbar(
-                        snackbarData = data,
-                        shape = RoundedCornerShape(16.dp),
-                        containerColor = if (AppColors.IsNight) AppColors.SurfaceElevated else Color(0xFF2B2118),
-                        contentColor = Color.White,
-                        actionColor = AppColors.Primary,
-                        modifier = Modifier.testTag("undo_snackbar")
-                    )
-                }
-            },
-            bottomBar = {
-                FloatingNavBar(currentRoute, lang) { route ->
-                    if (route == "azkhar") onAzkharTab(0)
-                    navController.navigateTab(route)
-                }
+    // Bottom bar hides while the content scrolls toward its end (finger moving up) and comes back
+    // as soon as the user scrolls the other way or switches tab.
+    var navVisible by remember { mutableStateOf(true) }
+    LaunchedEffect(currentRoute) { navVisible = true }
+    val hideOnScroll = remember {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                if (available.y < -4f) navVisible = false else if (available.y > 4f) navVisible = true
+                return androidx.compose.ui.geometry.Offset.Zero
             }
-        ) { innerPadding ->
+        }
+    }
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomSpace = 72.dp + navInset
+
+    Box(Modifier.fillMaxSize().background(AppColors.BackgroundBrush)) {
+        CompositionLocalProvider(com.example.ui.components.LocalBottomBarSpace provides bottomSpace) {
             NavHost(
                 navController = navController,
                 startDestination = "home",
-                modifier = Modifier.padding(innerPadding),
+                // Content runs under the floating bar; each screen adds LocalBottomBarSpace at its end.
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .imePadding()
+                    .nestedScroll(hideOnScroll),
                 enterTransition = { fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 24 } },
                 exitTransition = { fadeOut(tween(180)) },
                 popEnterTransition = { fadeIn(tween(260)) },
@@ -218,6 +217,29 @@ private fun MainScaffold(
                 composable("more") {
                     MoreScreen(viewModel = viewModel, initialSubScreen = moreInitialSubScreen)
                     LaunchedEffect(Unit) { onMoreOpened() }
+                }
+            }
+        }
+
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            SnackbarHost(snackbarHostState, modifier = if (navVisible) Modifier else Modifier.navigationBarsPadding()) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = if (AppColors.IsNight) AppColors.SurfaceElevated else Color(0xFF2B2118),
+                    contentColor = Color.White,
+                    actionColor = AppColors.Primary,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("undo_snackbar")
+                )
+            }
+            AnimatedVisibility(
+                visible = navVisible,
+                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+                exit = slideOutVertically(tween(220)) { it } + fadeOut(tween(160))
+            ) {
+                FloatingNavBar(currentRoute, lang) { route ->
+                    if (route == "azkhar") onAzkharTab(0)
+                    navController.navigateTab(route)
                 }
             }
         }

@@ -354,6 +354,12 @@ fun SoftSheet(
     }
 }
 
+/**
+ * Space to leave at the end of scrolling content so the last item can scroll clear of the
+ * bottom navigation bar (the bar floats over content and hides while scrolling).
+ */
+val LocalBottomBarSpace = staticCompositionLocalOf { 0.dp }
+
 // ---------------------------------------------------------------------------- hero art
 
 private data class Star(val x: Float, val y: Float, val r: Float, val phase: Float)
@@ -368,7 +374,12 @@ fun SkyBackdrop(
     isNight: Boolean = AppColors.IsNight,
     top: Color = AppColors.palette.heroTop,
     bottom: Color = AppColors.palette.heroBottom,
-    celestialAt: Offset? = null
+    celestialAt: Offset? = null,
+    /**
+     * Real sun/moon position: 0 = rising (left horizon), 1 = setting (right horizon), null = hidden.
+     * Drawn faintly on a dotted arc behind the hero content.
+     */
+    celestialProgress: Float? = null
 ) {
     val stars = remember { List(26) { Random(it * 31 + 7).let { r -> Star(r.nextFloat(), r.nextFloat() * 0.5f, 0.5f + r.nextFloat() * 1.1f, r.nextFloat() * 6.28f) } } }
     val transition = rememberInfiniteTransition(label = "sky")
@@ -386,6 +397,29 @@ fun SkyBackdrop(
             }
         }
         celestialAt?.let { drawCrescent(Offset(size.width * it.x, size.height * it.y), 14.dp.toPx(), if (isNight) Color(0xFFF6D9A6) else Color(0xFFFFF4DF)) }
+        celestialProgress?.let { raw ->
+            val p = raw.coerceIn(0f, 1f)
+            val left = size.width * 0.06f
+            val right = size.width * 0.94f
+            val baseY = size.height * 0.60f
+            val amp = size.height * 0.42f
+            fun pointAt(t: Float) = Offset(left + (right - left) * t, baseY - amp * sin(PI * t).toFloat())
+            // Faint dotted path of the sky
+            val dot = if (isNight) Color(0x33F6D9A6) else Color(0x40B8742A)
+            var t = 0f
+            while (t <= 1f) {
+                drawCircle(dot, 1.2.dp.toPx(), pointAt(t))
+                t += 0.025f
+            }
+            val at = pointAt(p)
+            if (isNight) {
+                drawCircle(Brush.radialGradient(listOf(Color(0x33F6D9A6), Color(0x00F6D9A6)), at, 34.dp.toPx()), 34.dp.toPx(), at)
+                drawCrescent(at, 11.dp.toPx(), Color(0x99F6D9A6))
+            } else {
+                drawCircle(Brush.radialGradient(listOf(Color(0x66FFF3D6), Color(0x00FFF3D6)), at, 40.dp.toPx()), 40.dp.toPx(), at)
+                drawCircle(Color(0x8CFFE6B0), 12.dp.toPx(), at)
+            }
+        }
     }
 }
 

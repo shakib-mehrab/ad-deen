@@ -55,12 +55,13 @@ class ScreenshotTest {
                         "wakt" -> PrayerTimesScreen(vm)
                         "tracker" -> TrackerScreen(vm)
                         "azkhar" -> AzkharScreen(vm)
-                        else -> MoreScreen(vm)
+                        "more" -> MoreScreen(vm)
+                        else -> key(screen) { MoreScreen(vm, initialSubScreen = screen.removePrefix("more_")) }
                     }
                 }
             }
         }
-        for (s in listOf("onboarding", "home", "wakt", "tracker", "azkhar", "more")) {
+        for (s in listOf("onboarding", "home", "wakt", "tracker", "azkhar", "more", "more_settings", "more_backup", "more_auth", "more_custom_sounds")) {
             screen = s
             shot("${s}_day")
         }

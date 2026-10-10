@@ -234,7 +234,7 @@ private fun AzkharListContent(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 14.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = 14.dp + com.example.ui.components.LocalBottomBarSpace.current),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
@@ -442,7 +442,7 @@ private fun CustomZikrContent(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 14.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = 14.dp + com.example.ui.components.LocalBottomBarSpace.current),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -581,7 +581,7 @@ private fun CustomZikrContent(
 private fun AsmaulHusnaListContent(items: List<AllahName>, lang: String, arabicFontSize: Int = 26) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 14.dp),
+        contentPadding = PaddingValues(top = 14.dp, bottom = 14.dp + com.example.ui.components.LocalBottomBarSpace.current),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         items(items) { name ->

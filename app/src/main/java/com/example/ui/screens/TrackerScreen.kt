@@ -71,7 +71,7 @@ fun TrackerScreen(
             .fillMaxSize()
             .background(androidx.compose.ui.graphics.Color.Transparent)
             .padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { com.example.ui.components.ScreenTitle(if (lang == "bn") "আমল ট্র্যাকার" else "Amal Tracker") }

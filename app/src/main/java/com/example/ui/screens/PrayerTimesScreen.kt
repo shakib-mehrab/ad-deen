@@ -66,7 +66,7 @@ fun PrayerTimesScreen(viewModel: MainViewModel) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { ScreenTitle(if (bn) "ওয়াক্ত" else "Wakt") }

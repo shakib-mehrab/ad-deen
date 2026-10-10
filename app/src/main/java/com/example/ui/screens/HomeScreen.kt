@@ -23,6 +23,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
@@ -82,8 +86,17 @@ fun HomeScreen(
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         // Hero sits directly on the page: glow + skyline + big time, then the details line.
+        // Real sky position: sun from sunrise to sunset, moon from sunset to next sunrise.
+        val sunrise = schedule.sunriseMillis
+        val sunset = schedule.maghrib.startTimeMillis
+        val celestial = when {
+            liveTime in sunrise until sunset -> (liveTime - sunrise).toFloat() / (sunset - sunrise)
+            liveTime >= sunset -> (liveTime - sunset).toFloat() / (tomorrowSchedule.sunriseMillis - sunset).coerceAtLeast(1)
+            else -> (liveTime - (sunset - 86_400_000L)).toFloat() / (sunrise - (sunset - 86_400_000L)).coerceAtLeast(1)
+        }
+        val sunUp = liveTime in sunrise until sunset
         Box(Modifier.fillMaxWidth()) {
-            SkyBackdrop(Modifier.matchParentSize())
+            SkyBackdrop(Modifier.matchParentSize(), isNight = !sunUp, celestialProgress = celestial)
             Column(Modifier.fillMaxWidth()) {
                 HomeTopBar(currentUser?.effectiveName, currentStreak, lang)
                 if (targetWindow != null) {
@@ -102,7 +115,7 @@ fun HomeScreen(
         }
 
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 6.dp, bottom = 24.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 6.dp, bottom = 24.dp + com.example.ui.components.LocalBottomBarSpace.current),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             QuickActionsGrid(lang, todayRecord, onNavigateToTracker, onNavigateToAzkhar, onNavigateToPrayerTimes)
@@ -194,12 +207,16 @@ internal fun PrayerCountdownHeroCard(
     val s = ((remainingMillis / 1000) % 60).coerceAtLeast(0)
     val countdown = String.format(Locale.US, "%d:%02d:%02d", h, m, s)
     val density = LocalDensity.current
-    val dateLine = remember(liveTime / 60_000, bn, hijriOffset) {
-        val greg = SimpleDateFormat("d MMMM, yyyy", if (bn) Locale("bn") else Locale.US).format(Date(liveTime))
+    val gregDate = remember(liveTime / 60_000, bn) {
+        SimpleDateFormat("EEE, d MMMM yyyy", if (bn) Locale("bn") else Locale.US).format(Date(liveTime))
+    }
+    val hijriDate = remember(liveTime / 60_000, bn, hijriOffset) {
         runCatching {
             val hd = CalendarDateHelper.getHijriDate(Calendar.getInstance().apply { timeInMillis = liveTime }, bn, hijriOffset)
-            "$greg • ${if (bn) CalendarDateHelper.toBnDigits(hd.day.toString()) else hd.day} ${hd.monthName}"
-        }.getOrDefault(greg)
+            val day = if (bn) CalendarDateHelper.toBnDigits(hd.day.toString()) else hd.day.toString()
+            val year = if (bn) CalendarDateHelper.toBnDigits(hd.year.toString()) else hd.year.toString()
+            "$day ${hd.monthName} $year ${if (bn) "হিজরি" else "AH"}"
+        }.getOrNull()
     }
     val interaction = remember { MutableInteractionSource() }
 
@@ -222,7 +239,20 @@ internal fun PrayerCountdownHeroCard(
             )
             // Big numerals: sized in dp so large system font can't break the layout.
             val big = with(density) { 92.dp.toSp() }
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 18.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(bottom = 18.dp)
+                    // Numerals melt into the skyline: full ink at the top, fading out toward the bottom.
+                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            Brush.verticalGradient(0f to Color.Black, 0.45f to Color.Black, 1f to Color.Black.copy(alpha = 0.18f)),
+                            blendMode = BlendMode.DstIn
+                        )
+                    }
+            ) {
                 val parts = clock.split(":")
                 Text(parts[0], style = MaterialTheme.typography.displayLarge.copy(fontFamily = CondensedNumeralsFamily, fontSize = big, lineHeight = big), color = AppColors.Secondary)
                 Crescent(Modifier.padding(horizontal = 4.dp).size(26.dp, 56.dp))
@@ -232,49 +262,48 @@ internal fun PrayerCountdownHeroCard(
             }
         }
         Row(
-            Modifier.fillMaxWidth().height(62.dp).padding(horizontal = 20.dp),
+            Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                 Text(
                     if (isActive) (if (bn) "ওয়াক্ত শেষ হতে বাকি" else "REMAINING TIME") else (if (bn) "ওয়াক্ত শুরু হতে বাকি" else "STARTS IN"),
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp, fontSize = 10.sp),
                     color = AppColors.TextSecondary,
                     maxLines = 1
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp),
+                    color = AppColors.TextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.testTag("hero_waqt_name")
+                )
+                Box(Modifier.width(84.dp).height(26.dp).testTag("hero_countdown_box"), contentAlignment = Alignment.CenterStart) {
                     Text(
-                        title,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                        countdown,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = CondensedNumeralsFamily,
+                            fontSize = with(density) { 20.dp.toSp() },
+                            fontFeatureSettings = "tnum"
+                        ),
                         color = AppColors.TextPrimary,
                         maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false).testTag("hero_waqt_name")
+                        softWrap = false
                     )
-                    Spacer(Modifier.width(6.dp))
-                    Box(Modifier.width(84.dp).height(26.dp).testTag("hero_countdown_box"), contentAlignment = Alignment.CenterStart) {
-                        Text(
-                            countdown,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontFamily = CondensedNumeralsFamily,
-                                fontSize = with(density) { 19.dp.toSp() },
-                                fontFeatureSettings = "tnum"
-                            ),
-                            color = AppColors.TextPrimary,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
                 }
             }
-            Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(34.dp).background(AppColors.BorderMedium))
+            Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(42.dp).background(AppColors.BorderMedium))
             Column(Modifier.weight(1f)) {
-                Text(dateLine, style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.4.sp), color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(gregDate, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (hijriDate != null) {
+                    Text(hijriDate, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Place, null, tint = AppColors.Secondary, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Outlined.Place, null, tint = AppColors.Secondary, modifier = Modifier.size(13.dp))
                     Spacer(Modifier.width(2.dp))
-                    Text(district ?: "", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium), color = AppColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(district ?: "", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp), color = AppColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
