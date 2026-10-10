@@ -108,7 +108,7 @@ class LayoutRenderTest {
             val card = rule.onNodeWithTag("prayer_hero_card").getBoundsInRoot()
             val box = rule.onNodeWithTag("hero_countdown_box", useUnmergedTree = true).getBoundsInRoot()
             val name = rule.onNodeWithTag("hero_waqt_name", useUnmergedTree = true).getBoundsInRoot()
-            assertEquals("timer width fixed", 84f, (box.right - box.left).value, 0.5f)
+            assertEquals("timer width fixed", 76f, (box.right - box.left).value, 0.5f)
             assertEquals("timer height fixed", 26f, (box.bottom - box.top).value, 0.5f)
             val overlaps = name.left < box.right && box.left < name.right && name.top < box.bottom && box.top < name.bottom
             assertFalse("$p/$lang/$scale name overlaps timer", overlaps)

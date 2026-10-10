@@ -192,9 +192,9 @@ private fun MainScaffold(
                 navController = navController,
                 startDestination = "home",
                 // Content runs under the floating bar; each screen adds LocalBottomBarSpace at its end.
+                // Edge-to-edge: Home paints its glow behind the status bar; other screens pad themselves.
                 modifier = Modifier
                     .fillMaxSize()
-                    .statusBarsPadding()
                     .imePadding()
                     .nestedScroll(hideOnScroll),
                 enterTransition = { fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 24 } },
@@ -211,11 +211,11 @@ private fun MainScaffold(
                         onNavigateToMore = { navController.navigateTab("more") }
                     )
                 }
-                composable("prayer_times") { PrayerTimesScreen(viewModel = viewModel) }
-                composable("tracker") { TrackerScreen(viewModel = viewModel) }
-                composable("azkhar") { AzkharScreen(viewModel = viewModel, initialTab = azkharInitialTab) }
+                composable("prayer_times") { Box(Modifier.statusBarsPadding()) { PrayerTimesScreen(viewModel = viewModel) } }
+                composable("tracker") { Box(Modifier.statusBarsPadding()) { TrackerScreen(viewModel = viewModel) } }
+                composable("azkhar") { Box(Modifier.statusBarsPadding()) { AzkharScreen(viewModel = viewModel, initialTab = azkharInitialTab) } }
                 composable("more") {
-                    MoreScreen(viewModel = viewModel, initialSubScreen = moreInitialSubScreen)
+                    Box(Modifier.statusBarsPadding()) { MoreScreen(viewModel = viewModel, initialSubScreen = moreInitialSubScreen) }
                     LaunchedEffect(Unit) { onMoreOpened() }
                 }
             }

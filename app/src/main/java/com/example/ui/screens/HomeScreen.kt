@@ -152,7 +152,7 @@ fun HomeScreen(
 @Composable
 private fun HomeTopBar(name: String?, streak: Int, lang: String) {
     val bn = lang == "bn"
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).testTag("authenticated_user_banner")) {
+    Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp).testTag("authenticated_user_banner")) {
         ScreenTitle(
             title = if (bn) "আদ-দ্বীন" else "Ad-Deen",
             leading = { if (name != null) UserAvatar(name, size = 36.dp) else AdDeenLogo(size = 36.dp) },
@@ -261,49 +261,69 @@ internal fun PrayerCountdownHeroCard(
                 Text(ampm, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = AppColors.Secondary, modifier = Modifier.align(Alignment.Bottom).padding(bottom = 18.dp))
             }
         }
+        // Two-row grid around one centre divider:
+        //   REMAINING TIME      |  Hijri date
+        //   Maghrib   0:11:00   |  (pin) Location
+        // Left half is right-aligned to the bar, right half left-aligned to it.
         Row(
-            Modifier.fillMaxWidth().height(70.dp).padding(horizontal = 20.dp),
+            Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(horizontal = 20.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                Text(
-                    if (isActive) (if (bn) "ওয়াক্ত শেষ হতে বাকি" else "REMAINING TIME") else (if (bn) "ওয়াক্ত শুরু হতে বাকি" else "STARTS IN"),
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp, fontSize = 10.sp),
-                    color = AppColors.TextSecondary,
-                    maxLines = 1
-                )
-                Text(
-                    title,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp),
-                    color = AppColors.TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag("hero_waqt_name")
-                )
-                Box(Modifier.width(84.dp).height(26.dp).testTag("hero_countdown_box"), contentAlignment = Alignment.CenterStart) {
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                Box(Modifier.height(18.dp), contentAlignment = Alignment.CenterEnd) {
                     Text(
-                        countdown,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontFamily = CondensedNumeralsFamily,
-                            fontSize = with(density) { 20.dp.toSp() },
-                            fontFeatureSettings = "tnum"
-                        ),
-                        color = AppColors.TextPrimary,
-                        maxLines = 1,
-                        softWrap = false
+                        if (isActive) (if (bn) "ওয়াক্ত শেষ হতে বাকি" else "REMAINING TIME") else (if (bn) "ওয়াক্ত শুরু হতে বাকি" else "STARTS IN"),
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.8.sp, fontSize = 10.sp),
+                        color = AppColors.TextSecondary,
+                        maxLines = 1
                     )
                 }
-            }
-            Box(Modifier.padding(horizontal = 14.dp).width(1.dp).height(42.dp).background(AppColors.BorderMedium))
-            Column(Modifier.weight(1f)) {
-                Text(gregDate, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (hijriDate != null) {
-                    Text(hijriDate, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp), color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.height(28.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp),
+                        color = AppColors.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false).testTag("hero_waqt_name")
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Box(Modifier.width(76.dp).height(26.dp).testTag("hero_countdown_box"), contentAlignment = Alignment.CenterEnd) {
+                        Text(
+                            countdown,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = CondensedNumeralsFamily,
+                                fontSize = with(density) { 20.dp.toSp() },
+                                fontFeatureSettings = "tnum"
+                            ),
+                            color = AppColors.TextPrimary,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            }
+            Box(Modifier.padding(horizontal = 14.dp).width(1.dp).fillMaxHeight().background(AppColors.BorderMedium))
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                Box(Modifier.height(18.dp), contentAlignment = Alignment.CenterStart) {
+                    Text(
+                        hijriDate ?: gregDate,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                        color = AppColors.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(Modifier.height(28.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.Place, null, tint = AppColors.Secondary, modifier = Modifier.size(13.dp))
-                    Spacer(Modifier.width(2.dp))
-                    Text(district ?: "", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp), color = AppColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        district ?: "",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium, fontSize = 13.sp),
+                        color = AppColors.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
