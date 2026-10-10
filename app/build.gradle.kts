@@ -1,4 +1,16 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.util.Properties
+
+// Release signing comes from keystore.properties in the project root (never committed).
+// See docs/RELEASE.md for how to create the keystore and this file.
+val keystoreProps = Properties().apply {
+  val f = rootProject.file("keystore.properties")
+  if (f.exists()) f.inputStream().use { load(it) }
+}
+val hasReleaseKeystore = keystoreProps.getProperty("storeFile") != null
+// Local-only escape hatch to test a minified build on a phone that has the debug build installed:
+//   gradlew assembleRelease -PallowDebugSigning=true   (NEVER distribute that APK)
+val allowDebugSigning = (findProperty("allowDebugSigning") as String?)?.toBoolean() == true
 
 plugins {
   alias(libs.plugins.android.application)
@@ -16,19 +28,21 @@ android {
     applicationId = "com.aistudio.addin.mqzpvt"
     minSdk = 24
     targetSdk = 36
+    // Bump BOTH for every release you distribute: versionCode must always increase.
     versionCode = 1
-    versionName = "1.0"
+    versionName = "1.0.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+      if (hasReleaseKeystore) {
+        storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+        storePassword = keystoreProps.getProperty("storePassword")
+        keyAlias = keystoreProps.getProperty("keyAlias")
+        keyPassword = keystoreProps.getProperty("keyPassword")
+      }
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -41,9 +55,15 @@ android {
   buildTypes {
     release {
       isCrunchPngs = false
-      isMinifyEnabled = false
+      // R8: removes unused code/resources and obfuscates -> smaller, harder-to-copy APK.
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      signingConfig = when {
+        hasReleaseKeystore -> signingConfigs.getByName("release")
+        allowDebugSigning -> signingConfigs.getByName("debugConfig")
+        else -> null // assembleRelease will stop with a clear "not signed" result; see docs/RELEASE.md
+      }
     }
     debug { signingConfig = signingConfigs.getByName("debugConfig") }
   }
@@ -98,25 +118,25 @@ dependencies {
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
   // implementation(libs.coil.compose)
-  implementation(libs.converter.moshi)
-  implementation(libs.firebase.ai)
+  // implementation(libs.converter.moshi)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
+  // implementation(libs.firebase.ai)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
   // Firestore
   implementation(libs.firebase.firestore)
 
   // Firebase Auth and Google Sign-In via Credential Manager:
   implementation(libs.firebase.auth)
-  implementation(libs.androidx.credentials)
-  implementation(libs.androidx.credentials.play.services)
-  implementation(libs.googleid)
-  implementation(libs.firebase.appcheck.recaptcha)
-  implementation(libs.firebase.appcheck.debug)
+  // implementation(libs.androidx.credentials)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
+  // implementation(libs.androidx.credentials.play.services)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
+  // implementation(libs.googleid)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
+  // implementation(libs.firebase.appcheck.recaptcha)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
+  // implementation(libs.firebase.appcheck.debug)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
-  implementation(libs.logging.interceptor)
-  implementation(libs.moshi.kotlin)
-  implementation(libs.okhttp)
+  // implementation(libs.logging.interceptor)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
+  // implementation(libs.moshi.kotlin)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
+  // implementation(libs.okhttp)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
   implementation(libs.play.services.location)
-  implementation(libs.retrofit)
+  // implementation(libs.retrofit)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)
@@ -131,5 +151,5 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
+  // "ksp"(libs.moshi.kotlin.codegen)  // unused - removed from release (smaller APK; App Check debug provider must never ship)
 }

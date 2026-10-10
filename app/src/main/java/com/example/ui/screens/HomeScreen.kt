@@ -255,7 +255,13 @@ internal fun PrayerCountdownHeroCard(
             ) {
                 val parts = clock.split(":")
                 Text(parts[0], style = MaterialTheme.typography.displayLarge.copy(fontFamily = CondensedNumeralsFamily, fontSize = big, lineHeight = big), color = AppColors.Secondary)
-                Crescent(Modifier.padding(horizontal = 4.dp).size(26.dp, 56.dp))
+                // Plain colon, slightly emphasised (80% of the digit size) so the time reads balanced.
+                Text(
+                    ":",
+                    style = MaterialTheme.typography.displayLarge.copy(fontFamily = CondensedNumeralsFamily, fontSize = big * 0.8f, lineHeight = big),
+                    color = AppColors.Secondary,
+                    modifier = Modifier.padding(horizontal = 2.dp).padding(bottom = 8.dp)
+                )
                 Text(parts.getOrElse(1) { "" }, style = MaterialTheme.typography.displayLarge.copy(fontFamily = CondensedNumeralsFamily, fontSize = big, lineHeight = big), color = AppColors.Secondary)
                 Spacer(Modifier.width(6.dp))
                 Text(ampm, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = AppColors.Secondary, modifier = Modifier.align(Alignment.Bottom).padding(bottom = 18.dp))
@@ -327,20 +333,6 @@ internal fun PrayerCountdownHeroCard(
                 }
             }
         }
-    }
-}
-
-/** Crescent "colon" between the hour and minute digits. */
-@Composable
-private fun Crescent(modifier: Modifier) {
-    val c = AppColors.Primary
-    Canvas(modifier) {
-        val r = size.width * 0.5f
-        val center = Offset(size.width / 2f, r + 2f)
-        val moon = Path().apply { addOval(Rect(center, r)) }
-        val bite = Path().apply { addOval(Rect(Offset(center.x + r * 0.45f, center.y - r * 0.25f), r * 0.85f)) }
-        drawPath(Path.combine(PathOperation.Difference, moon, bite), c)
-        drawCircle(c, size.width * 0.16f, Offset(size.width / 2f, size.height * 0.78f))
     }
 }
 

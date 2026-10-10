@@ -19,3 +19,11 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# ---- Ad-Deen release rules ----
+# Keep line numbers so crash stack traces from users are readable (map with mapping.txt).
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
+# Receivers/services are referenced from the manifest (R8 keeps those automatically);
+# the PendingIntent extras and Firestore use plain maps, so no model keep-rules are needed.

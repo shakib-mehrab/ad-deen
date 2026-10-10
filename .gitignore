@@ -24,3 +24,8 @@ scripts/icons/node_modules
 .firebaserc
 firebase.json
 firestore.indexes.json
+
+# Release signing secrets - NEVER commit
+keystore.properties
+*.jks
+*.keystore
