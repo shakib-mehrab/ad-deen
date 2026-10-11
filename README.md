@@ -34,10 +34,8 @@ a daily amal tracker, azkhar and tasbih, in English and বাংলা.**
 - Hijri date with a ±2-day moon-sighting adjustment.
 
 ### Alarms and reminders
-- A **start alarm** and a **15-minute end warning** for every waqt, each with its own on/off switch, notification channel and sound. Duha never shares Dhuhr's sound.
-- Turning an alarm off cancels every scheduled copy of it, and it stays off after a reboot, a time-zone change or an app update.
-- Prayer alarms use Android's alarm-clock mode, so they ring on time even in deep sleep.
-- **Istigfar and Durud reminders** run on their own schedules (every 15 minutes to 3 hours, aligned to the clock). When they coincide, Durud follows Istigfar 30 seconds later. Rotating Arabic, English and Bangla phrases. **Quiet hours** apply to these reminders only, never to prayer alarms.
+- A **start alarm** and a **15-minute end warning** for every waqt, each with its own on/off switch, notification channel and sound.
+- **Istigfar and Durud reminders** run on their own schedules. When they coincide, Durud follows Istigfar 30 seconds later. Rotating Arabic, English and Bangla phrases. **Quiet hours** apply to these reminders only, never to prayer alarms.
 - Morning and evening azkhar reminders.
 - **Custom sounds:** pick any audio file for any waqt or reminder, with preview and reset.
 
@@ -50,28 +48,22 @@ a daily amal tracker, azkhar and tasbih, in English and বাংলা.**
 | Azkhar: Wake, Morning, Evening, Sleep, Zikr (2 each) | 10 |
 
 - **Perfect Day** at 100 points. Tap a selected status again to clear it, and every change shows a 5-second **Undo**.
-- Monthly calendar, 7-day score chart with Quran markers, current and best **streaks**, and **milestones** (first Perfect Day; 3-, 7- and 30-day streaks; 7 days all in Jamat; Quran on 7 days).
-- Today and past days are editable; future days are locked. Days recorded before Quran tracking keep their original results.
+- Monthly calendar, 7-day score chart with Quran markers, current and best **streaks**, and **milestones** 
+
 
 ### Azkhar, tasbih and more
 - Morning, evening, sleep and waking azkhar with Arabic, transliteration and translations, plus tap-to-count with haptics.
 - Custom zikr counters (tasbih) and the **99 Names of Allah**.
 - Adjustable Arabic font size.
-- Quran browser with quran.com, quran.gov.bd and QuraanShareef, and you can **add your own websites**. The app gently encourages reading from a physical Mushaf.
+- Quran browser with quran.com, quran.gov.bd and QuraanShareef, and you can **add your own websites**. We encourages reading from a physical Mushaf.
 
 ### Account, sync and backup
 - Optional email sign-in with **real-time Firestore sync** across devices. Works offline and syncs when back online; the newest edit wins.
-- Each user can only read and write their own data (`users/{uid}/…` security rules).
 - **Backup files:** share to Google Drive, save to storage, restore any time.
 
 ### Updates
 - **In-app updates:** new versions published on GitHub Releases are offered inside the app (More → Check for updates, or automatically). Each download is verified (checksum and signing key) before Android's installer opens.
 
-### Design
-- A soft, warm interface: paper and amber by day, **warm espresso night mode** that fades in automatically at Maghrib (or follows the phone's dark mode).
-- Hero clock over a pale mosque skyline, with the sun or moon moving on its real path across the sky.
-- Guided **onboarding**: language, location and alarm permissions, each with an explanation.
-- Fully bilingual, with Poppins (English) and Hind Siliguri (Bangla) typography. Layouts are tested at 320dp width and 1.3x font size.
 
 ---
 
@@ -137,21 +129,7 @@ scripts/                       icon generator, live-reload dev script
 - **Build a release:** `pwsh -File scripts/release.ps1 -Notes "..."` (see [docs/RELEASE.md](docs/RELEASE.md)).
 - **Download the app:** [latest release](https://github.com/shakib-mehrab/ad-deen/releases/latest).
 
-## Documentation
 
-| Doc | What it covers |
-| :--- | :--- |
-| [docs/RELEASE.md](docs/RELEASE.md) | Signing, building the APK/AAB, sharing it, and the Play Store checklist |
-| [docs/UPDATES.md](docs/UPDATES.md) | Shipping updates: the in-app GitHub updater, the release script, Remote Config, Play |
-| [docs/SOUNDS.md](docs/SOUNDS.md) | Waqt → channel → sound mapping, and how to replace sounds |
-| [docs/LOGO.md](docs/LOGO.md) | Master logo, regenerating every icon |
-| [docs/FONTS.md](docs/FONTS.md) | Bundled fonts and their licences |
-
-## Known limitations
-
-- GPS locations outside Bangladesh use the nearest Bangladeshi district.
-- Room uses destructive migration. Add a proper migration before changing the database schema, or local history is lost on update.
-- Sign-in is email/password only (no Google Sign-In yet).
 
 ## Privacy
 
