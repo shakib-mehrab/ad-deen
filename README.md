@@ -15,10 +15,10 @@ a daily amal tracker, azkhar and tasbih, in English and বাংলা.**
 </div>
 
 <p align="center">
-  <img src="docs/screenshots/home-day.png" width="200" alt="Home (day)" />
-  <img src="docs/screenshots/home-night.png" width="200" alt="Home (night)" />
-  <img src="docs/screenshots/wakt-day.png" width="200" alt="Wakt and alarms" />
-  <img src="docs/screenshots/tracker-day.png" width="200" alt="Amal tracker" />
+  <img width="470" height="1032" alt="home-day" src="https://github.com/user-attachments/assets/ddc80738-cc23-412d-bb5c-b6b0266294e8" />
+    <img width="470" height="1032" alt="home-night" src="https://github.com/user-attachments/assets/e9977978-341d-4d3f-aea8-219420f20294" />
+  <img width="470" height="1032" alt="wakt-day" src="https://github.com/user-attachments/assets/2fda62e0-a534-498f-959a-390b1e6ccdd6" />
+ <img width="470" height="1032" alt="tracker-day" src="https://github.com/user-attachments/assets/5abce572-9475-44d3-93cf-27b02e9470ef" />
 </p>
 
 ---
@@ -79,15 +79,15 @@ a daily amal tracker, azkhar and tasbih, in English and বাংলা.**
 
 | Onboarding | Home | Home (night) | Wakt and alarms |
 | :---: | :---: | :---: | :---: |
-| <img src="docs/screenshots/onboarding-day.png" width="180" /> | <img src="docs/screenshots/home-day.png" width="180" /> | <img src="docs/screenshots/home-night.png" width="180" /> | <img src="docs/screenshots/wakt-day.png" width="180" /> |
+<img width="470" height="1032" alt="onboarding-day" src="https://github.com/user-attachments/assets/e90f0a17-ddbb-4688-8052-1e49030bb064" /> | <img width="470" height="1032" alt="home-day" src="https://github.com/user-attachments/assets/d628d3e8-9b93-4b43-84e1-430acb65e1b1" /> | <img src="docs/screenshots/home-night.png" width="180" /> | <img width="470" height="1032" alt="wakt-day" src="https://github.com/user-attachments/assets/c511e905-f3fc-4bd8-aeb6-a44d0e378d65" />
 
 | Wakt (night) | Amal tracker | Azkhar | More |
 | :---: | :---: | :---: | :---: |
-| <img src="docs/screenshots/wakt-night.png" width="180" /> | <img src="docs/screenshots/tracker-day.png" width="180" /> | <img src="docs/screenshots/azkhar-day.png" width="180" /> | <img src="docs/screenshots/more-day.png" width="180" /> |
+|<img width="470" height="1032" alt="wakt-night" src="https://github.com/user-attachments/assets/712b4da8-591a-4d3d-b2df-443955c50059" /> | <img width="470" height="1032" alt="tracker-day" src="https://github.com/user-attachments/assets/b8bef7a2-08fc-4f24-bbe4-c507c124a956" /> | <img width="470" height="1032" alt="azkhar-day" src="https://github.com/user-attachments/assets/f99f00fc-27e8-4db8-9dbb-0977007a9e3e" /> | <img width="470" height="1032" alt="more-day" src="https://github.com/user-attachments/assets/24d6f7b0-a4c2-4f65-84bb-c56ae9c93071" /> |
 
 | Settings | Backup and sync | Account | Sounds and reading |
 | :---: | :---: | :---: | :---: |
-| <img src="docs/screenshots/more-settings-day.png" width="180" /> | <img src="docs/screenshots/more-backup-day.png" width="180" /> | <img src="docs/screenshots/more-auth-day.png" width="180" /> | <img src="docs/screenshots/more-custom-sounds-day.png" width="180" /> |
+| <img width="470" height="1032" alt="more-settings-day" src="https://github.com/user-attachments/assets/6a05147e-0ccf-47f1-8468-d59dec1237e3" /> | <img width="470" height="1032" alt="more-backup-day" src="https://github.com/user-attachments/assets/fd9f0e3f-fdc9-417d-ad4b-b54bc9f37f39" /> | <img width="470" height="1032" alt="more-auth-day" src="https://github.com/user-attachments/assets/2cf1457e-e034-4d48-a605-a60ede5c0f68" /> |<img width="470" height="1032" alt="more-custom-sounds-day" src="https://github.com/user-attachments/assets/cd0a68d7-c5d4-4341-9d1f-f5ce2d7e10af" /> |
 
 <sub>Screenshots are rendered from the app's real Compose code (`ScreenshotTest`) with sample data.</sub>
 
