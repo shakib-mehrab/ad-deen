@@ -44,7 +44,7 @@ private fun colorSchemeFor(p: AdDeenPalette) = if (p.isNight) {
 }
 
 /**
- * Time-aware theme. [isNight] comes from the prayer schedule (Maghrib -> Fajr) or system dark mode.
+ * Time-aware theme. [isNight] comes only from the prayer schedule (Maghrib -> Fajr), not the system dark mode.
  * The switch cross-fades over ~1.2 s so the whole app "turns to night" smoothly.
  * [lang] picks the font family: Poppins for English, Hind Siliguri for Bangla.
  */

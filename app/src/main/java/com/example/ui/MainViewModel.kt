@@ -111,13 +111,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val tomorrowSchedule: StateFlow<DailyPrayerSchedule> = combine(todayDate, settings) { d, s -> scheduleFor(nextDate(d), s) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, scheduleFor(nextDate(todayDateString), UserSettings()))
 
-    /** Night = between today's Maghrib and Fajr. Drives the time-aware theme; re-evaluated every 30 s. */
+    /**
+     * Night = from today's Maghrib until today's Fajr, in the device time zone. This alone drives the
+     * day/night theme (the phone's dark-mode setting is ignored). Re-evaluated every 30 s.
+     */
     val isNightTime: StateFlow<Boolean> = combine(
         flow { while (true) { emit(System.currentTimeMillis()); delay(30_000) } },
         prayerSchedule
-    ) { now, s -> now >= s.maghrib.startTimeMillis || now < s.fajr.startTimeMillis }
+    ) { now, s -> isNightAt(now, s) }
         .distinctUntilChanged()
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        // Start with the right value so the first frame doesn't flash the day palette at night.
+        .stateIn(viewModelScope, SharingStarted.Eagerly, isNightAt(System.currentTimeMillis(), prayerSchedule.value))
 
     val currentStreak: StateFlow<Int> = combine(allDays, todayDate) { days, today -> calculateCurrentStreak(days, today) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
@@ -612,3 +616,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return maxStreak
     }
 }
+
+/** True between [schedule]'s Maghrib and Fajr (Fajr of the same date, i.e. the early-morning hours). */
+internal fun isNightAt(now: Long, schedule: DailyPrayerSchedule): Boolean =
+    now >= schedule.maghrib.startTimeMillis || now < schedule.fajr.startTimeMillis

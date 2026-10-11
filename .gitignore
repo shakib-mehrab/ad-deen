@@ -33,3 +33,7 @@ keystore.properties
 # Release outputs (APK + mapping) - uploaded to GitHub Releases, not committed
 dist/
 image.png
+
+# Landing website - kept local / hosted privately, not published from this repo
+website/
+.claude/

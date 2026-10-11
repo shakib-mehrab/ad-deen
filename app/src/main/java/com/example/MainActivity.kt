@@ -12,7 +12,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -58,8 +57,8 @@ class MainActivity : ComponentActivity() {
             val viewModel: MainViewModel = viewModel()
             val nightByPrayerTime by viewModel.isNightTime.collectAsState()
             val settings by viewModel.settings.collectAsState()
-            // Warm night palette between Maghrib and Fajr, or whenever the phone is in dark mode.
-            AdDinTheme(isNight = nightByPrayerTime || isSystemInDarkTheme(), lang = settings.language) {
+            // Warm night palette from Maghrib to Fajr only; independent of the phone's dark mode.
+            AdDinTheme(isNight = nightByPrayerTime, lang = settings.language) {
                 AdDinApp(viewModel)
             }
         }

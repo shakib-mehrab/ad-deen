@@ -2,7 +2,7 @@
   "versionCode": 1,
   "versionName": "1.0.0",
   "apkUrl": "https://github.com/shakib-mehrab/ad-deen/releases/download/v1.0.0/Ad-Deen-1.0.0.apk",
-  "sha256": "f89f245e6257c7d8cfe8034a14dfa05167b1a7bb20f9279d7319c1079bafd5a0",
+  "sha256": "d5114d9e6d746aef9efe343e9f584bcb0ef05374b8434087353d689388ed6d60",
   "notes": "First public release of Ad-Deen: prayer times and alarms for every waqt, amal tracker, azkhar and tasbih, cloud sync, and in-app updates.",
   "notesBn": "আদ-দ্বীনের প্রথম প্রকাশ: প্রতি ওয়াক্তের নামাজের সময় ও অ্যালার্ম, আমল ট্র্যাকার, আযকার ও তাসবীহ, ক্লাউড সিঙ্ক এবং অ্যাপের ভেতরেই আপডেট।",
   "minSupportedVersionCode": 0

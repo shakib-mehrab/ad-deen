@@ -41,6 +41,8 @@ if ($LASTEXITCODE -ne 0) { throw "APK signature verification failed." }
 New-Item -ItemType Directory -Force dist | Out-Null
 $fileName = "Ad-Deen-$versionName.apk"
 Copy-Item $apk "dist/$fileName" -Force
+# Stable-name copy: the website's download button always points at releases/latest/download/Ad-Deen.apk
+Copy-Item $apk "dist/Ad-Deen.apk" -Force
 Copy-Item "app/build/outputs/mapping/release/mapping.txt" "dist/mapping-$versionName.txt" -Force
 $sha = (Get-FileHash "dist/$fileName" -Algorithm SHA256).Hash.ToLower()
 
@@ -61,7 +63,7 @@ Write-Host "Built dist/$fileName  (sha256 $sha)" -ForegroundColor Green
 Write-Host "Saved dist/mapping-$versionName.txt (keep it to decode crash traces)"
 Write-Host ""
 Write-Host "Next steps (in this order):" -ForegroundColor Yellow
-Write-Host "  1. GitHub -> Releases -> Draft a new release -> tag v$versionName -> attach dist/$fileName -> Publish"
+Write-Host "  1. GitHub -> Releases -> Draft a new release -> tag v$versionName -> attach BOTH dist/$fileName and dist/Ad-Deen.apk -> Publish"
 Write-Host "     https://github.com/$Repo/releases/new?tag=v$versionName"
 Write-Host "  2. Then publish the update manifest:"
 Write-Host "     git add update/version.json app/build.gradle.kts; git commit -m `"release: v$versionName`"; git push"
