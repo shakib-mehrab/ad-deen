@@ -32,3 +32,4 @@ keystore.properties
 
 # Release outputs (APK + mapping) - uploaded to GitHub Releases, not committed
 dist/
+image.png
