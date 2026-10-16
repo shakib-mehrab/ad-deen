@@ -15,10 +15,10 @@ a daily amal tracker, azkhar and tasbih, in English and বাংলা.**
 </div>
 
 <p align="center">
-  <img width="220" alt="home-day" src="https://github.com/user-attachments/assets/ddc80738-cc23-412d-bb5c-b6b0266294e8" />
-  <img width="220" alt="home-night" src="https://github.com/user-attachments/assets/e9977978-341d-4d3f-aea8-219420f20294" />
-  <img width="220" alt="wakt-day" src="https://github.com/user-attachments/assets/2fda62e0-a534-498f-959a-390b1e6ccdd6" />
-  <img width="220" alt="tracker-day" src="https://github.com/user-attachments/assets/5abce572-9475-44d3-93cf-27b02e9470ef" />
+  <img width="200" alt="home-day" src="https://github.com/user-attachments/assets/ddc80738-cc23-412d-bb5c-b6b0266294e8" />
+  <img width="200" alt="home-night" src="https://github.com/user-attachments/assets/e9977978-341d-4d3f-aea8-219420f20294" />
+  <img width="200" alt="wakt-day" src="https://github.com/user-attachments/assets/2fda62e0-a534-498f-959a-390b1e6ccdd6" />
+  <img width="200" alt="tracker-day" src="https://github.com/user-attachments/assets/5abce572-9475-44d3-93cf-27b02e9470ef" />
 </p>
 
 
