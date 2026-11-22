@@ -36,6 +36,25 @@ import com.example.model.ZikrItem
 import com.example.ui.MainViewModel
 import com.example.ui.Strings
 import com.example.ui.components.CalendarDateHelper
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.LayoutDirection
+import com.example.ui.theme.AppColors
+import com.example.ui.theme.ArabicFontFamily
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.example.ui.theme.JamatGreen
 import com.example.ui.theme.PerfectGold
 
@@ -149,6 +168,7 @@ fun AzkharScreen(
                         vibrateTap()
                         viewModel.incrementCounter("morning", id, target)
                     },
+                    onComplete = { id, target -> viewModel.completeCounter("morning", id, target) },
                     onReset = { id -> viewModel.resetCounter("morning", id) }
                 )
                 1 -> AzkharListContent(
@@ -161,6 +181,7 @@ fun AzkharScreen(
                         vibrateTap()
                         viewModel.incrementCounter("evening", id, target)
                     },
+                    onComplete = { id, target -> viewModel.completeCounter("evening", id, target) },
                     onReset = { id -> viewModel.resetCounter("evening", id) }
                 )
                 2 -> AzkharListContent(
@@ -173,6 +194,7 @@ fun AzkharScreen(
                         vibrateTap()
                         viewModel.incrementCounter("sleep", id, target)
                     },
+                    onComplete = { id, target -> viewModel.completeCounter("sleep", id, target) },
                     onReset = { id -> viewModel.resetCounter("sleep", id) }
                 )
                 3 -> AzkharListContent(
@@ -185,6 +207,7 @@ fun AzkharScreen(
                         vibrateTap()
                         viewModel.incrementCounter("wake", id, target)
                     },
+                    onComplete = { id, target -> viewModel.completeCounter("wake", id, target) },
                     onReset = { id -> viewModel.resetCounter("wake", id) }
                 )
                 4 -> AsmaulHusnaListContent(
@@ -220,6 +243,12 @@ fun AzkharScreen(
     }
 }
 
+/**
+ * One azkhar per page: swipe (or the arrows) for the next one. Each card can be counted by tapping,
+ * or marked complete at once for people who count on a hand tasbih. Transliteration and translation
+ * stay folded until asked for; the choice carries over while swiping through the section.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AzkharListContent(
     sectionKey: String,
@@ -228,205 +257,293 @@ private fun AzkharListContent(
     lang: String,
     arabicFontSize: Int = 26,
     onCount: (String, Int) -> Unit,
+    onComplete: (String, Int) -> Unit,
     onReset: (String) -> Unit
 ) {
-    val totalDone = items.count { (counters["$sectionKey:${it.id}"] ?: 0) >= it.target }
+    if (items.isEmpty()) return
+    val isBn = lang == "bn"
+    fun isDone(it: AzkharItem) = (counters["$sectionKey:${it.id}"] ?: 0) >= it.target
+    val totalDone = items.count { isDone(it) }
+    val pager = rememberPagerState(initialPage = items.indexOfFirst { !isDone(it) }.coerceAtLeast(0)) { items.size }
+    val scope = rememberCoroutineScope()
+    var showTranslit by rememberSaveable { mutableStateOf(false) }
+    var showTranslation by rememberSaveable { mutableStateOf(false) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 14.dp, bottom = 14.dp + com.example.ui.components.LocalBottomBarSpace.current),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Surface(
-                color = com.example.ui.theme.AppColors.WarmTintContainer,
-                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+    Column(Modifier.fillMaxSize().padding(bottom = com.example.ui.components.LocalBottomBarSpace.current)) {
+        Spacer(Modifier.height(10.dp))
+        // Progress: "Completed 3 / 15" + one segment per azkhar (filled = done, dark = current). Tap a segment to jump.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "${Strings.t("completed", lang)}: ${num(totalDone, isBn)} / ${num(items.size, isBn)}",
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFeatureSettings = "tnum"),
+                color = AppColors.Secondary
+            )
+            if (totalDone == items.size) {
+                Surface(color = AppColors.Primary, shape = RoundedCornerShape(6.dp)) {
                     Text(
-                        text = "${Strings.t("completed", lang)}: $totalDone / ${items.size}",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            fontFeatureSettings = "tnum"
-                        ),
-                        color = com.example.ui.theme.AppColors.Secondary
+                        text = "100%",
+                        color = AppColors.OnPrimary,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
-                    if (totalDone == items.size) {
-                        Surface(
-                            color = com.example.ui.theme.AppColors.Primary,
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                text = "100% (+3 pts)",
-                                color = com.example.ui.theme.AppColors.OnPrimary,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    fontFeatureSettings = "tnum"
-                                ),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                            )
-                        }
-                    }
                 }
             }
         }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            items.forEachIndexed { i, it ->
+                val current = i == pager.currentPage
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(18.dp)
+                        .clickable { scope.launch { pager.animateScrollToPage(i) } },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(if (current) 6.dp else 4.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                when {
+                                    current -> AppColors.Secondary
+                                    isDone(it) -> AppColors.Primary
+                                    else -> AppColors.WarmTintContainer
+                                }
+                            )
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
 
-        items(items) { item ->
+        HorizontalPager(
+            state = pager,
+            pageSpacing = 12.dp,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalAlignment = Alignment.Top
+        ) { page ->
+            val item = items[page]
             val count = counters["$sectionKey:${item.id}"] ?: 0
             val isCompleted = count >= item.target
 
-            // Azkhar card: white surface (or warm tint if completed) + 1dp #874D14@30% border
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isCompleted) com.example.ui.theme.AppColors.WarmTintContainer else com.example.ui.theme.AppColors.Surface
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = if (isCompleted) BorderStroke(1.2.dp, com.example.ui.theme.AppColors.Primary) else null,
-                modifier = Modifier.fillMaxWidth()
+            // Finishing the card you are on moves to the next one after a short pause.
+            var wasCompleted by remember(item.id) { mutableStateOf(isCompleted) }
+            LaunchedEffect(isCompleted) {
+                if (isCompleted && !wasCompleted && pager.currentPage == page && page < items.lastIndex) {
+                    delay(650)
+                    pager.animateScrollToPage(page + 1)
+                }
+                wasCompleted = isCompleted
+            }
+
+            AzkharCard(
+                item = item,
+                count = count,
+                isCompleted = isCompleted,
+                lang = lang,
+                arabicFontSize = arabicFontSize,
+                showTranslit = showTranslit,
+                showTranslation = showTranslation,
+                onToggleTranslit = { showTranslit = !showTranslit },
+                onToggleTranslation = { showTranslation = !showTranslation },
+                onCount = { onCount(item.id, item.target) },
+                onComplete = { onComplete(item.id, item.target) },
+                onReset = { onReset(item.id) }
+            )
+        }
+
+        // Prev · "2 / 15" · Next  (swipe works too; the arrows help discoverability and accessibility)
+        Row(
+            Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
+                enabled = pager.currentPage > 0
+            ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = if (isBn) "আগেরটি" else "Previous", tint = AppColors.Secondary) }
+            Text(
+                text = "${num(pager.currentPage + 1, isBn)} / ${num(items.size, isBn)}",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
+                color = AppColors.TextSecondary
+            )
+            IconButton(
+                onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } },
+                enabled = pager.currentPage < items.lastIndex
+            ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = if (isBn) "পরেরটি" else "Next", tint = AppColors.Secondary) }
+        }
+    }
+}
+
+private const val BN_DIGITS = "০১২৩৪৫৬৭৮৯"
+
+private fun num(n: Int, isBn: Boolean): String =
+    if (isBn) n.toString().map { c -> if (c.isDigit()) BN_DIGITS[c - '0'] else c }.joinToString("") else n.toString()
+
+@Composable
+private fun AzkharCard(
+    item: AzkharItem,
+    count: Int,
+    isCompleted: Boolean,
+    lang: String,
+    arabicFontSize: Int,
+    showTranslit: Boolean,
+    showTranslation: Boolean,
+    onToggleTranslit: () -> Unit,
+    onToggleTranslation: () -> Unit,
+    onCount: () -> Unit,
+    onComplete: () -> Unit,
+    onReset: () -> Unit
+) {
+    val isBn = lang == "bn"
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = if (isCompleted) AppColors.WarmTintContainer else AppColors.Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = if (isCompleted) BorderStroke(1.2.dp, AppColors.Primary) else null,
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Column(Modifier.fillMaxSize().padding(16.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                Text(
+                    text = "${num(item.order, isBn)}. ${if (isBn) item.titleBn else item.titleEn}",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 16.sp),
+                    color = AppColors.Secondary,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Surface(color = AppColors.Primary, shape = RoundedCornerShape(8.dp)) {
+                    Text(
+                        text = "${num(count, isBn)} / ${num(item.target, isBn)}",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFeatureSettings = "tnum"),
+                        color = AppColors.OnPrimary,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Long duas scroll inside the card; the actions stay pinned at the bottom.
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 10.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Text(
-                            text = "${item.order}. ${if (lang == "bn") item.titleBn else item.titleEn}",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            ),
-                            color = com.example.ui.theme.AppColors.Secondary,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        // Counter pill ("0/3") = #FFB030 fill + #1F1F1F text
-                        Surface(
-                            color = com.example.ui.theme.AppColors.Primary,
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = "$count / ${item.target}",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    fontFeatureSettings = "tnum"
-                                ),
-                                color = com.example.ui.theme.AppColors.OnPrimary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-
-                    // Arabic Text #1F1F1F at 26-30sp with line-height ~1.9
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                     Text(
                         text = item.arabic,
-                        style = MaterialTheme.typography.headlineSmall.copy(
+                        style = TextStyle(
+                            fontFamily = ArabicFontFamily,
                             fontSize = arabicFontSize.sp,
-                            lineHeight = (arabicFontSize * 1.9f).sp,
-                            fontWeight = FontWeight.Medium
+                            lineHeight = (arabicFontSize * 2.0f).sp,
+                            textDirection = TextDirection.Rtl
                         ),
-                        textAlign = TextAlign.Right,
-                        color = com.example.ui.theme.AppColors.TextPrimary,
+                        textAlign = TextAlign.Start,
+                        color = AppColors.TextPrimary,
                         modifier = Modifier.fillMaxWidth()
                     )
-
-                    Spacer(Modifier.height(8.dp))
-
-                    // Transliteration #874D14 italic 14sp
+                }
+                AnimatedVisibility(visible = showTranslit) {
                     Text(
                         text = item.transliteration,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                            fontSize = 14.sp
-                        ),
-                        color = com.example.ui.theme.AppColors.Secondary
+                        style = MaterialTheme.typography.bodySmall.copy(fontStyle = FontStyle.Italic, fontSize = 14.sp, lineHeight = 21.sp),
+                        color = AppColors.Secondary,
+                        modifier = Modifier.padding(top = 10.dp)
                     )
-
-                    Spacer(Modifier.height(4.dp))
-
-                    // Translation #5A4632 14sp
+                }
+                AnimatedVisibility(visible = showTranslation) {
                     Text(
-                        text = if (lang == "bn") item.translationBn else item.translationEn,
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp),
-                        color = com.example.ui.theme.AppColors.TextSecondary
+                        text = if (isBn) item.translationBn else item.translationEn,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 14.sp, lineHeight = 22.sp),
+                        color = AppColors.TextSecondary,
+                        modifier = Modifier.padding(top = 10.dp)
                     )
+                }
+            }
 
-                    Spacer(Modifier.height(12.dp))
+            // Show / hide toggles
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FoldChip(Strings.t("transliteration", lang), showTranslit, onToggleTranslit, Modifier.weight(1f))
+                FoldChip(Strings.t("translation", lang), showTranslation, onToggleTranslation, Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(10.dp))
 
-                    // Count and Reset Actions: "Completed" = #874D14 fill + white text + check icon; "Reset" = text button in #874D14
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+            // Count | Mark complete | Reset
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = onCount,
+                    enabled = !isCompleted,
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("azkhar_tap_btn_${item.id}"),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AppColors.Primary,
+                        contentColor = AppColors.OnPrimary,
+                        disabledContainerColor = AppColors.Secondary,
+                        disabledContentColor = AppColors.OnSecondary
+                    )
+                ) {
+                    Icon(if (isCompleted) Icons.Default.CheckCircle else Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = if (isCompleted) Strings.t("completed", lang) else "${Strings.t("tap_count_short", lang)} (${num(count, isBn)}/${num(item.target, isBn)})",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFeatureSettings = "tnum"),
+                        maxLines = 1
+                    )
+                }
+                if (!isCompleted) {
+                    OutlinedButton(
+                        onClick = onComplete,
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("azkhar_done_btn_${item.id}"),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        border = BorderStroke(1.2.dp, AppColors.Secondary),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Secondary)
                     ) {
-                        Button(
-                            onClick = { onCount(item.id, item.target) },
-                            enabled = !isCompleted,
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("azkhar_tap_btn_${item.id}"),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isCompleted) com.example.ui.theme.AppColors.Secondary else com.example.ui.theme.AppColors.Primary,
-                                contentColor = if (isCompleted) com.example.ui.theme.AppColors.OnSecondary else com.example.ui.theme.AppColors.OnPrimary,
-                                disabledContainerColor = com.example.ui.theme.AppColors.Secondary,
-                                disabledContentColor = com.example.ui.theme.AppColors.OnSecondary
-                            )
-                        ) {
-                            Icon(
-                                imageVector = if (isCompleted) Icons.Default.CheckCircle else Icons.Default.TouchApp,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = if (isCompleted) Strings.t("completed", lang) else "${Strings.t("tap_to_count", lang)} ($count/${item.target})",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    fontFeatureSettings = "tnum"
-                                )
-                            )
-                        }
-
-                        if (count > 0) {
-                            TextButton(
-                                onClick = { onReset(item.id) },
-                                modifier = Modifier.heightIn(min = 48.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = null,
-                                    tint = com.example.ui.theme.AppColors.Secondary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    text = Strings.t("reset", lang),
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
-                                    ),
-                                    color = com.example.ui.theme.AppColors.Secondary
-                                )
-                            }
-                        }
+                        Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            Strings.t("mark_complete", lang),
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp),
+                            maxLines = 1
+                        )
+                    }
+                }
+                if (count > 0) {
+                    IconButton(onClick = onReset, modifier = Modifier.size(48.dp)) {
+                        Icon(Icons.Default.Refresh, contentDescription = Strings.t("reset", lang), tint = AppColors.Secondary)
                     }
                 }
             }
         }
+    }
+}
+
+/** Small pill that folds/unfolds a section of the card ("Transliteration ⌄"). */
+@Composable
+private fun FoldChip(label: String, open: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (open) AppColors.Secondary.copy(alpha = 0.12f) else AppColors.WarmTintContainer)
+            .clickable(onClick = onClick)
+            .semantics { stateDescription = if (open) "expanded" else "collapsed" }
+            .heightIn(min = 40.dp)
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold), color = AppColors.Secondary, maxLines = 1)
+        Spacer(Modifier.width(4.dp))
+        Icon(
+            if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            contentDescription = null,
+            tint = AppColors.Secondary,
+            modifier = Modifier.size(18.dp)
+        )
     }
 }
 
@@ -652,6 +769,7 @@ private fun AsmaulHusnaListContent(items: List<AllahName>, lang: String, arabicF
                             text = name.arabic,
                             style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.Bold,
+                                fontFamily = ArabicFontFamily,
                                 fontSize = (arabicFontSize + 2).sp
                             ),
                             textAlign = TextAlign.End,

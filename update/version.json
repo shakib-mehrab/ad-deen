@@ -1,9 +1,9 @@
 {
-  "versionCode": 1,
-  "versionName": "1.0.0",
-  "apkUrl": "https://github.com/shakib-mehrab/ad-deen/releases/download/v1.0.0/Ad-Deen-1.0.0.apk",
-  "sha256": "d5114d9e6d746aef9efe343e9f584bcb0ef05374b8434087353d689388ed6d60",
-  "notes": "First public release of Ad-Deen: prayer times and alarms for every waqt, amal tracker, azkhar and tasbih, cloud sync, and in-app updates.",
-  "notesBn": "আদ-দ্বীনের প্রথম প্রকাশ: প্রতি ওয়াক্তের নামাজের সময় ও অ্যালার্ম, আমল ট্র্যাকার, আযকার ও তাসবীহ, ক্লাউড সিঙ্ক এবং অ্যাপের ভেতরেই আপডেট।",
+  "versionCode": 2,
+  "versionName": "1.0.1",
+  "apkUrl": "https://github.com/shakib-mehrab/ad-deen/releases/download/v1.0.1/Ad-Deen-1.0.1.apk",
+  "sha256": "bbbb28d46c26ad772202549048f1c7e62a2ba9ffa3ef31908125a43a11ce11ba",
+  "notes": "Azkhar update: swipe from one dua to the next; a 'Done' button for those who count on a hand tasbih; pronunciation and translation now open only when you tap them; clearer Arabic font (fixes how 'lillahi' displayed on some phones).",
+  "notesBn": "আযকার আপডেট: সোয়াইপ করে এক দুআ থেকে পরের দুআয় যান; হাতে তাসবীহ গোনেন যারা, তাদের জন্য 'সম্পন্ন' বাটন; উচ্চারণ ও অনুবাদ এখন ট্যাপ করলে খোলে; আরও স্পষ্ট আরবি ফন্ট (কিছু ফোনে 'লিল্লাহি' ভুল দেখানোর সমস্যা ঠিক করা হয়েছে)।",
   "minSupportedVersionCode": 0
 }

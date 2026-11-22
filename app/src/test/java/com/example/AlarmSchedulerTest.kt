@@ -103,8 +103,10 @@ class AlarmSchedulerTest {
         // Simulate a reboot: BootReceiver rebuilds from stored settings
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         Thread.sleep(1500)
-        assertFalse(startScheduled(PrayerName.ASR, 1))
-        assertTrue(startScheduled(PrayerName.MAGHRIB, 1))
+        // BootReceiver schedules from the real clock, so check tomorrow relative to today (not the fixed test date).
+        val tomorrow = AlarmScheduler.epochDay(Calendar.getInstance(tz).apply { add(Calendar.DAY_OF_YEAR, 1) })
+        assertFalse(AlarmScheduler.isScheduled(context, AlarmScheduler.startRequestCode(PrayerName.ASR, tomorrow)))
+        assertTrue(AlarmScheduler.isScheduled(context, AlarmScheduler.startRequestCode(PrayerName.MAGHRIB, tomorrow)))
 
         // Simulate the Asr time arriving with a stale alarm: the receiver re-reads toggles and stays silent
         val app = shadowOf(context as android.app.Application)

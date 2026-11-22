@@ -25,6 +25,12 @@ val HindSiliguriFontFamily = FontFamily(
     Font(R.font.hind_siliguri_bold, FontWeight.Bold)
 )
 
+/**
+ * Arabic azkhar and Names: Amiri (classical Naskh, SIL OFL). The UI fonts have no Arabic glyphs, and
+ * some phones' fallback fonts collapse لِلَّهِ into the "Allah" ligature, dropping the kasra.
+ */
+val ArabicFontFamily = FontFamily(Font(R.font.amiri_regular, FontWeight.Normal))
+
 /** Tall condensed numerals for the hero clock (the phone's built-in Roboto Condensed). */
 val CondensedNumeralsFamily = FontFamily(Typeface.create("sans-serif-condensed", Typeface.BOLD))
 

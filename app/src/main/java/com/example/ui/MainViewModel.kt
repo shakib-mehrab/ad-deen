@@ -276,6 +276,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** "Mark complete": for people who count on a hand tasbih. Jumps the counter straight to its target. */
+    fun completeCounter(section: String, itemId: String, target: Int) {
+        mutateDay(date = todayDateString) { d ->
+            val key = "$section:$itemId"
+            if ((d.counters[key] ?: 0) >= target) return@mutateDay d
+            val counters = d.counters + (key to target)
+            d.copy(counters = counters, sections = withSection(d.sections, section, checkSectionCompletion(section, counters)))
+        }
+    }
+
     fun resetCounter(section: String, itemId: String) {
         mutateDay(date = todayDateString) { d ->
             val counters = d.counters - "$section:$itemId"

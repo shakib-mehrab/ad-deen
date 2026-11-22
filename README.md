@@ -142,6 +142,6 @@ space, and **More → Delete account** removes them. The app has no ads and no a
 
 ## Credits and licences
 
-- Fonts: [Poppins](https://github.com/itfoundry/Poppins) and Hind Siliguri by Indian Type Foundry, both under the SIL Open Font License 1.1 (licence texts in `app/src/main/assets/licenses/`).
+- Fonts: [Poppins](https://github.com/itfoundry/Poppins) and Hind Siliguri by Indian Type Foundry, and [Amiri](https://github.com/aliftype/amiri) for Arabic, all under the SIL Open Font License 1.1 (licence texts in `app/src/main/assets/licenses/`).
 - Icons: Material Symbols (Apache 2.0).
 - Hadith quoted in the app: Sahih al-Bukhari 6464.

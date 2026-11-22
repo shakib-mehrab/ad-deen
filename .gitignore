@@ -37,3 +37,6 @@ image.png
 # Landing website - kept local / hosted privately, not published from this repo
 website/
 .claude/
+
+# Private project handbook (local notes)
+PROJECT_HANDBOOK.md
