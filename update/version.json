@@ -1,9 +1,9 @@
 {
-  "versionCode": 2,
-  "versionName": "1.0.1",
-  "apkUrl": "https://github.com/shakib-mehrab/ad-deen/releases/download/v1.0.1/Ad-Deen-1.0.1.apk",
-  "sha256": "bbbb28d46c26ad772202549048f1c7e62a2ba9ffa3ef31908125a43a11ce11ba",
-  "notes": "Azkhar update: swipe from one dua to the next; a 'Done' button for those who count on a hand tasbih; pronunciation and translation now open only when you tap them; clearer Arabic font (fixes how 'lillahi' displayed on some phones).",
-  "notesBn": "আযকার আপডেট: সোয়াইপ করে এক দুআ থেকে পরের দুআয় যান; হাতে তাসবীহ গোনেন যারা, তাদের জন্য 'সম্পন্ন' বাটন; উচ্চারণ ও অনুবাদ এখন ট্যাপ করলে খোলে; আরও স্পষ্ট আরবি ফন্ট (কিছু ফোনে 'লিল্লাহি' ভুল দেখানোর সমস্যা ঠিক করা হয়েছে)।",
+  "versionCode": 3,
+  "versionName": "1.0.2",
+  "apkUrl": "https://github.com/shakib-mehrab/ad-deen/releases/download/v1.0.2/Ad-Deen-1.0.2.apk",
+  "sha256": "65c130e893ab0b9eaedb4df7ff0f7dfdd2ed63aa1efbf9328bbfaf5c255f7fa2",
+  "notes": "Azkhar cards now use the whole screen: the bottom bar slides away while you swipe through duas, and the card grows into that space, so long duas and translations fit.",
+  "notesBn": "আযকারের কার্ড এখন পুরো স্ক্রিন জুড়ে: দুআ সোয়াইপ করার সময় নিচের বার সরে যায় আর কার্ড সেই জায়গা নিয়ে নেয়, তাই লম্বা দুআ ও অনুবাদ সহজে ধরে।",
   "minSupportedVersionCode": 0
 }

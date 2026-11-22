@@ -53,6 +53,10 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import com.example.ui.theme.AppColors
 import com.example.ui.theme.ArabicFontFamily
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.example.ui.theme.JamatGreen
@@ -269,14 +273,29 @@ private fun AzkharListContent(
     var showTranslit by rememberSaveable { mutableStateOf(false) }
     var showTranslation by rememberSaveable { mutableStateOf(false) }
 
-    Column(Modifier.fillMaxSize().padding(bottom = com.example.ui.components.LocalBottomBarSpace.current)) {
-        Spacer(Modifier.height(10.dp))
+    // The card runs down to the floating bar while it shows, and to the screen edge once it hides,
+    // so hiding the bar gives the dua the whole screen.
+    val barVisible = com.example.ui.components.LocalBottomBarVisible.current
+    val setBarVisible = com.example.ui.components.LocalSetBottomBarVisible.current
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val bottomPad by animateDpAsState(
+        if (barVisible) com.example.ui.components.LocalBottomBarSpace.current + 8.dp else navInset + 12.dp,
+        animationSpec = tween(220), label = "azkhar_bottom"
+    )
+    // Swiping to another card switches to reading mode: the bar slides away (scroll back up to bring it back).
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.currentPage }.drop(1).collect { setBarVisible(false) }
+    }
+
+    Column(Modifier.fillMaxSize().padding(bottom = bottomPad)) {
+        Spacer(Modifier.height(6.dp))
         // Progress: "Completed 3 / 15" + one segment per azkhar (filled = done, dark = current). Tap a segment to jump.
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "${Strings.t("completed", lang)}: ${num(totalDone, isBn)} / ${num(items.size, isBn)}",
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFeatureSettings = "tnum"),
-                color = AppColors.Secondary
+                color = AppColors.Secondary,
+                modifier = Modifier.weight(1f)
             )
             if (totalDone == items.size) {
                 Surface(color = AppColors.Primary, shape = RoundedCornerShape(6.dp)) {
@@ -287,9 +306,24 @@ private fun AzkharListContent(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
+                Spacer(Modifier.width(4.dp))
             }
+            // Prev · "2 / 15" · Next (swipe works too; the arrows help discoverability and accessibility)
+            IconButton(
+                onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
+                enabled = pager.currentPage > 0
+            ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = if (isBn) "আগেরটি" else "Previous", tint = AppColors.Secondary) }
+            Text(
+                text = "${num(pager.currentPage + 1, isBn)} / ${num(items.size, isBn)}",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
+                color = AppColors.TextSecondary
+            )
+            IconButton(
+                onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } },
+                enabled = pager.currentPage < items.lastIndex
+            ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = if (isBn) "পরেরটি" else "Next", tint = AppColors.Secondary) }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(2.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             items.forEachIndexed { i, it ->
                 val current = i == pager.currentPage
@@ -352,27 +386,6 @@ private fun AzkharListContent(
                 onComplete = { onComplete(item.id, item.target) },
                 onReset = { onReset(item.id) }
             )
-        }
-
-        // Prev · "2 / 15" · Next  (swipe works too; the arrows help discoverability and accessibility)
-        Row(
-            Modifier.fillMaxWidth().padding(top = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
-                enabled = pager.currentPage > 0
-            ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = if (isBn) "আগেরটি" else "Previous", tint = AppColors.Secondary) }
-            Text(
-                text = "${num(pager.currentPage + 1, isBn)} / ${num(items.size, isBn)}",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
-                color = AppColors.TextSecondary
-            )
-            IconButton(
-                onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } },
-                enabled = pager.currentPage < items.lastIndex
-            ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = if (isBn) "পরেরটি" else "Next", tint = AppColors.Secondary) }
         }
     }
 }

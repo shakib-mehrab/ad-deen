@@ -200,7 +200,11 @@ private fun MainScaffold(
     val bottomSpace = 72.dp + navInset
 
     Box(Modifier.fillMaxSize().background(AppColors.BackgroundBrush)) {
-        CompositionLocalProvider(com.example.ui.components.LocalBottomBarSpace provides bottomSpace) {
+        CompositionLocalProvider(
+            com.example.ui.components.LocalBottomBarSpace provides bottomSpace,
+            com.example.ui.components.LocalBottomBarVisible provides navVisible,
+            com.example.ui.components.LocalSetBottomBarVisible provides { v: Boolean -> navVisible = v }
+        ) {
             NavHost(
                 navController = navController,
                 startDestination = "home",

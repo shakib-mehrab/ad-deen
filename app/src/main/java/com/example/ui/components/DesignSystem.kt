@@ -360,6 +360,12 @@ fun SoftSheet(
  */
 val LocalBottomBarSpace = staticCompositionLocalOf { 0.dp }
 
+/** Whether the floating bottom bar is currently showing (it hides while content scrolls). */
+val LocalBottomBarVisible = androidx.compose.runtime.compositionLocalOf { true }
+
+/** Lets a screen hide/show the floating bar, e.g. Azkhar hides it while swiping through cards. */
+val LocalSetBottomBarVisible = staticCompositionLocalOf<(Boolean) -> Unit> { {} }
+
 // ---------------------------------------------------------------------------- hero art
 
 private data class Star(val x: Float, val y: Float, val r: Float, val phase: Float)
